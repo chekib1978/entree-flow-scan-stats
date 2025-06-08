@@ -5,15 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, Plus, Search, Edit, Trash2 } from "lucide-react";
+import { Upload, Plus, Search, Edit, Trash2, FileCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Article } from "@/types/database";
+import { parseExcelFile } from "@/utils/excelParser";
 
 const ArticlesModule = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -47,20 +49,61 @@ const ArticlesModule = () => {
     input.accept = '.xlsx,.xls';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        toast({
-          title: "Import en cours",
-          description: `Le fichier ${file.name} est en cours de traitement...`,
-        });
+      if (!file) return;
+
+      setImporting(true);
+      toast({
+        title: "Import en cours",
+        description: `Traitement du fichier ${file.name}...`,
+      });
+
+      try {
+        const { articles: parsedArticles, errors } = await parseExcelFile(file);
         
-        // Simulation d'import - dans une vraie application, il faudrait parser le fichier Excel
-        // et insérer les données en base
-        setTimeout(() => {
+        if (errors.length > 0) {
           toast({
-            title: "Import simulé",
-            description: "Fonctionnalité d'import Excel à implémenter avec un parser de fichiers",
+            title: "Erreurs détectées",
+            description: `${errors.length} erreur(s) trouvée(s). Vérifiez le format.`,
+            variant: "destructive"
           });
-        }, 2000);
+          console.log("Erreurs d'import:", errors);
+          return;
+        }
+
+        if (parsedArticles.length === 0) {
+          toast({
+            title: "Aucun article",
+            description: "Aucun article valide trouvé dans le fichier",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        // Insérer les articles en base
+        const { data, error } = await supabase
+          .from('articles')
+          .insert(parsedArticles)
+          .select();
+
+        if (error) throw error;
+
+        toast({
+          title: "Import réussi",
+          description: `${parsedArticles.length} article(s) importé(s) avec succès`,
+        });
+
+        // Recharger la liste
+        await fetchArticles();
+
+      } catch (error) {
+        console.error('Erreur lors de l\'import:', error);
+        toast({
+          title: "Erreur d'import",
+          description: "Impossible d'importer le fichier Excel",
+          variant: "destructive"
+        });
+      } finally {
+        setImporting(false);
       }
     };
     input.click();
@@ -128,10 +171,15 @@ const ArticlesModule = () => {
           <div className="flex flex-col sm:flex-row gap-4">
             <Button 
               onClick={handleExcelImport}
+              disabled={importing}
               className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md"
             >
-              <Upload className="w-4 h-4 mr-2" />
-              Importer Excel
+              {importing ? (
+                <FileCheck className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 mr-2" />
+              )}
+              {importing ? 'Import en cours...' : 'Importer Excel'}
             </Button>
             <Button variant="outline" className="border-blue-200 hover:bg-blue-50">
               <Plus className="w-4 h-4 mr-2" />
@@ -156,8 +204,8 @@ const ArticlesModule = () => {
             <div className="text-sm text-blue-700 space-y-1">
               <p>• Colonne A : <strong>Désignation</strong> (nom de l'article)</p>
               <p>• Colonne B : <strong>Prix</strong> (prix unitaire en TND)</p>
-              <p>• Colonne C : <strong>Code Article</strong> (optionnel)</p>
               <p>• Formats acceptés : .xlsx, .xls</p>
+              <p>• Exemple : "Ordinateur portable" | "1250.500"</p>
             </div>
           </div>
 
