@@ -3,11 +3,12 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Package, FileText, QrCode, BarChart3, Upload, Download } from "lucide-react";
+import { Package, FileText, QrCode, BarChart3, Plus } from "lucide-react";
 import ArticlesModule from "@/components/ArticlesModule";
 import GroupageModule from "@/components/GroupageModule";
 import QRScannerModule from "@/components/QRScannerModule";
 import StatisticsModule from "@/components/StatisticsModule";
+import CreationBonModule from "@/components/CreationBonModule";
 import DashboardCards from "@/components/DashboardCards";
 
 const Index = () => {
@@ -28,10 +29,14 @@ const Index = () => {
 
         {/* Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-white/50 backdrop-blur-sm border shadow-sm">
+          <TabsList className="grid w-full grid-cols-6 bg-white/50 backdrop-blur-sm border shadow-sm">
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
-              Dashboard
+              Tableau de Bord
+            </TabsTrigger>
+            <TabsTrigger value="creation" className="flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Nouveau BL
             </TabsTrigger>
             <TabsTrigger value="articles" className="flex items-center gap-2">
               <Package className="w-4 h-4" />
@@ -54,6 +59,11 @@ const Index = () => {
           {/* Dashboard */}
           <TabsContent value="dashboard" className="space-y-6">
             <DashboardCards />
+          </TabsContent>
+
+          {/* Creation Module */}
+          <TabsContent value="creation">
+            <CreationBonModule />
           </TabsContent>
 
           {/* Articles Module */}
