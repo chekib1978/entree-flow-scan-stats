@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +32,7 @@ const CreationBonModule = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [openCombobox, setOpenCombobox] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+  const [searchValue, setSearchValue] = useState('');
   const [nouvelleLigne, setNouvelleLigne] = useState({
     designation: '',
     quantite: 1,
@@ -67,6 +67,7 @@ const CreationBonModule = () => {
       designation: article.designation,
       prix_unitaire: Number(article.prix)
     }));
+    setSearchValue(article.designation);
     setOpenCombobox(false);
   };
 
@@ -96,6 +97,7 @@ const CreationBonModule = () => {
       prix_unitaire: 0
     });
     setSelectedArticle(null);
+    setSearchValue('');
   };
 
   const supprimerLigne = (id: string) => {
@@ -253,7 +255,7 @@ const CreationBonModule = () => {
                       >
                         {selectedArticle
                           ? selectedArticle.designation
-                          : nouvelleLigne.designation || "Rechercher un article..."}
+                          : searchValue || "Rechercher un article..."}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
@@ -261,23 +263,24 @@ const CreationBonModule = () => {
                       <Command>
                         <CommandInput 
                           placeholder="Tapez pour rechercher..." 
-                          value={nouvelleLigne.designation}
-                          onValueChange={(value) => setNouvelleLigne(prev => ({ ...prev, designation: value }))}
+                          value={searchValue}
+                          onValueChange={(value) => {
+                            setSearchValue(value);
+                            setNouvelleLigne(prev => ({ ...prev, designation: value }));
+                          }}
                         />
                         <CommandEmpty>Aucun article trouvé.</CommandEmpty>
                         <CommandList>
                           <CommandGroup>
                             {articles
                               .filter(article => {
-                                if (nouvelleLigne.designation.length === 0) {
-                                  return false; // N'affiche rien si aucune lettre tapée
+                                if (searchValue.length === 0) {
+                                  return false;
                                 }
-                                if (nouvelleLigne.designation.length >= 4) {
-                                  // Recherche précise avec les 4 premières lettres
-                                  return article.designation.toLowerCase().startsWith(nouvelleLigne.designation.slice(0, 4).toLowerCase());
+                                if (searchValue.length >= 4) {
+                                  return article.designation.toLowerCase().startsWith(searchValue.slice(0, 4).toLowerCase());
                                 } else {
-                                  // Recherche partielle pour moins de 4 caractères
-                                  return article.designation.toLowerCase().startsWith(nouvelleLigne.designation.toLowerCase());
+                                  return article.designation.toLowerCase().startsWith(searchValue.toLowerCase());
                                 }
                               })
                               .map((article) => (
