@@ -55,12 +55,14 @@ const CreationBonModule = () => {
 
       if (error) throw error;
       setArticles(data || []);
+      console.log('Articles chargés:', data?.length || 0);
     } catch (error) {
       console.error('Erreur lors du chargement des articles:', error);
     }
   };
 
   const handleArticleSelect = (article: Article) => {
+    console.log('Article sélectionné:', article);
     setSelectedArticle(article);
     setNouvelleLigne(prev => ({
       ...prev,
@@ -265,8 +267,10 @@ const CreationBonModule = () => {
                           placeholder="Tapez pour rechercher..." 
                           value={searchValue}
                           onValueChange={(value) => {
+                            console.log('Recherche:', value);
                             setSearchValue(value);
                             setNouvelleLigne(prev => ({ ...prev, designation: value }));
+                            setSelectedArticle(null);
                           }}
                         />
                         <CommandEmpty>Aucun article trouvé.</CommandEmpty>
@@ -277,10 +281,24 @@ const CreationBonModule = () => {
                                 if (searchValue.length === 0) {
                                   return false;
                                 }
+                                
+                                const searchLower = searchValue.toLowerCase();
+                                const designationLower = article.designation.toLowerCase();
+                                
+                                console.log(`Comparaison: "${searchLower}" avec "${designationLower}"`);
+                                
                                 if (searchValue.length >= 4) {
-                                  return article.designation.toLowerCase().startsWith(searchValue.slice(0, 4).toLowerCase());
+                                  // Recherche précise avec les 4 premières lettres (insensible à la casse)
+                                  const searchFirst4 = searchLower.slice(0, 4);
+                                  const designationFirst4 = designationLower.slice(0, 4);
+                                  const matches = designationFirst4.startsWith(searchFirst4);
+                                  console.log(`4+ chars: "${searchFirst4}" startsWith "${designationFirst4}": ${matches}`);
+                                  return matches;
                                 } else {
-                                  return article.designation.toLowerCase().startsWith(searchValue.toLowerCase());
+                                  // Recherche partielle pour moins de 4 caractères (insensible à la casse)
+                                  const matches = designationLower.startsWith(searchLower);
+                                  console.log(`<4 chars: "${searchLower}" startsWith "${designationLower}": ${matches}`);
+                                  return matches;
                                 }
                               })
                               .map((article) => (
