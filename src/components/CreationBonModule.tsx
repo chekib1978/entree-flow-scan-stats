@@ -1,14 +1,17 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Save, Trash2, FileText } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Plus, Save, Trash2, FileText, Check, ChevronsUpDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { Article } from "@/types/database";
 
 interface LigneArticle {
   id: string;
@@ -27,6 +30,9 @@ const CreationBonModule = () => {
   });
   
   const [lignes, setLignes] = useState<LigneArticle[]>([]);
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [openCombobox, setOpenCombobox] = useState(false);
+  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [nouvelleLigne, setNouvelleLigne] = useState({
     designation: '',
     quantite: 1,
@@ -35,6 +41,34 @@ const CreationBonModule = () => {
   
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetchArticles();
+  }, []);
+
+  const fetchArticles = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('articles')
+        .select('*')
+        .order('designation');
+
+      if (error) throw error;
+      setArticles(data || []);
+    } catch (error) {
+      console.error('Erreur lors du chargement des articles:', error);
+    }
+  };
+
+  const handleArticleSelect = (article: Article) => {
+    setSelectedArticle(article);
+    setNouvelleLigne(prev => ({
+      ...prev,
+      designation: article.designation,
+      prix_unitaire: Number(article.prix)
+    }));
+    setOpenCombobox(false);
+  };
 
   const ajouterLigne = () => {
     if (!nouvelleLigne.designation || nouvelleLigne.prix_unitaire <= 0) {
@@ -61,6 +95,7 @@ const CreationBonModule = () => {
       quantite: 1,
       prix_unitaire: 0
     });
+    setSelectedArticle(null);
   };
 
   const supprimerLigne = (id: string) => {
@@ -208,12 +243,55 @@ const CreationBonModule = () => {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="designation">Désignation</Label>
-                  <Input
-                    id="designation"
-                    value={nouvelleLigne.designation}
-                    onChange={(e) => setNouvelleLigne(prev => ({ ...prev, designation: e.target.value }))}
-                    placeholder="Nom de l'article"
-                  />
+                  <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={openCombobox}
+                        className="w-full justify-between"
+                      >
+                        {selectedArticle
+                          ? selectedArticle.designation
+                          : nouvelleLigne.designation || "Rechercher un article..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0">
+                      <Command>
+                        <CommandInput 
+                          placeholder="Rechercher un article..." 
+                          value={nouvelleLigne.designation}
+                          onValueChange={(value) => setNouvelleLigne(prev => ({ ...prev, designation: value }))}
+                        />
+                        <CommandEmpty>Aucun article trouvé.</CommandEmpty>
+                        <CommandList>
+                          <CommandGroup>
+                            {articles
+                              .filter(article => 
+                                article.designation.toLowerCase().includes(nouvelleLigne.designation.toLowerCase())
+                              )
+                              .map((article) => (
+                                <CommandItem
+                                  key={article.id}
+                                  onSelect={() => handleArticleSelect(article)}
+                                >
+                                  <Check
+                                    className={`mr-2 h-4 w-4 ${
+                                      selectedArticle?.id === article.id ? "opacity-100" : "opacity-0"
+                                    }`}
+                                  />
+                                  <div>
+                                    <div className="font-medium">{article.designation}</div>
+                                    <div className="text-sm text-gray-500">{Number(article.prix).toFixed(3)} TND</div>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="quantite">Quantité</Label>
