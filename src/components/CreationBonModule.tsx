@@ -260,7 +260,7 @@ const CreationBonModule = () => {
                     <PopoverContent className="w-full p-0">
                       <Command>
                         <CommandInput 
-                          placeholder="Rechercher un article..." 
+                          placeholder="Tapez les 4 premières lettres..." 
                           value={nouvelleLigne.designation}
                           onValueChange={(value) => setNouvelleLigne(prev => ({ ...prev, designation: value }))}
                         />
@@ -268,9 +268,13 @@ const CreationBonModule = () => {
                         <CommandList>
                           <CommandGroup>
                             {articles
-                              .filter(article => 
-                                article.designation.toLowerCase().includes(nouvelleLigne.designation.toLowerCase())
-                              )
+                              .filter(article => {
+                                if (nouvelleLigne.designation.length >= 4) {
+                                  // Recherche précise avec les 4 premières lettres
+                                  return article.designation.toLowerCase().startsWith(nouvelleLigne.designation.slice(0, 4).toLowerCase());
+                                }
+                                return false;
+                              })
                               .map((article) => (
                                 <CommandItem
                                   key={article.id}
