@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,8 @@ const CreationBonModule = () => {
       if (error) throw error;
       setArticles(data || []);
       console.log('Articles chargés:', data?.length);
+      // Afficher les 5 premiers articles pour debug
+      console.log('Premiers articles:', data?.slice(0, 5).map(a => a.designation));
     } catch (error) {
       console.error('Erreur lors du chargement des articles:', error);
       toast({
@@ -100,13 +103,34 @@ const CreationBonModule = () => {
 
     // Filtrer les articles pour l'autocomplétion en utilisant startsWith
     if (value.length >= 3) {
+      const searchLower = value.toLowerCase().trim();
+      console.log(`Recherche pour "${value}" (${searchLower})`);
+      console.log('Nombre total d\'articles:', articles.length);
+      
       const filtered = articles.filter(article => {
-        const searchLower = value.toLowerCase().trim();
         const designationLower = article.designation.toLowerCase();
-        return designationLower.startsWith(searchLower);
+        const matches = designationLower.startsWith(searchLower);
+        
+        // Log pour debug - afficher quelques comparaisons
+        if (articles.indexOf(article) < 3) {
+          console.log(`"${designationLower}" startsWith "${searchLower}": ${matches}`);
+        }
+        
+        return matches;
       });
       
       console.log(`Recherche pour "${value}":`, filtered.length, 'résultats avec startsWith');
+      
+      // Si aucun résultat avec startsWith, essayer includes pour debug
+      if (filtered.length === 0) {
+        const filteredIncludes = articles.filter(article => {
+          const designationLower = article.designation.toLowerCase();
+          return designationLower.includes(searchLower);
+        });
+        console.log(`Avec includes:`, filteredIncludes.length, 'résultats');
+        console.log('Exemples avec includes:', filteredIncludes.slice(0, 3).map(a => a.designation));
+      }
+      
       setFilteredArticles(filtered);
       setShowSuggestions(true);
     } else {
