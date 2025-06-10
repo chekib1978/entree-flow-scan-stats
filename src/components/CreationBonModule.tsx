@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,45 +6,38 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Save, Trash2, FileText, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, Save, Trash2, Package, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Article } from "@/types/database";
 
-interface LigneArticle {
+interface LigneBL {
   id: string;
   designation: string;
   quantite: number;
   prix_unitaire: number;
   montant_ligne: number;
+  article_id?: string;
 }
 
 const CreationBonModule = () => {
-  const [bonInfo, setBonInfo] = useState({
-    numero_bl: '',
-    fournisseur: '',
-    date_bl: new Date().toISOString().split('T')[0],
-    notes: ''
-  });
-  
-  const [lignes, setLignes] = useState<LigneArticle[]>([]);
+  const [numeroBL, setNumeroBL] = useState("");
+  const [fournisseur, setFournisseur] = useState("");
+  const [dateBL, setDateBL] = useState("");
+  const [notes, setNotes] = useState("");
+  const [lignes, setLignes] = useState<LigneBL[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
-  const [openCombobox, setOpenCombobox] = useState(false);
-  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
-  const [searchValue, setSearchValue] = useState('');
-  const [nouvelleLigne, setNouvelleLigne] = useState({
-    designation: '',
-    quantite: 1,
-    prix_unitaire: 0
-  });
-  
-  const [saving, setSaving] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredArticles, setFilteredArticles] = useState<Article[]>([]);
+  const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchArticles();
+    // Ajouter une ligne vide au démarrage
+    ajouterLigne();
   }, []);
 
   const fetchArticles = async () => {
@@ -55,96 +49,164 @@ const CreationBonModule = () => {
 
       if (error) throw error;
       setArticles(data || []);
-      console.log('Articles chargés:', data?.length || 0);
+      console.log('Articles chargés:', data?.length);
     } catch (error) {
       console.error('Erreur lors du chargement des articles:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les articles",
+        variant: "destructive"
+      });
     }
-  };
-
-  const handleArticleSelect = (article: Article) => {
-    console.log('Article sélectionné:', article);
-    setSelectedArticle(article);
-    setNouvelleLigne(prev => ({
-      ...prev,
-      designation: article.designation,
-      prix_unitaire: Number(article.prix)
-    }));
-    setSearchValue(article.designation);
-    setOpenCombobox(false);
   };
 
   const ajouterLigne = () => {
-    if (!nouvelleLigne.designation || nouvelleLigne.prix_unitaire <= 0) {
-      toast({
-        title: "Erreur",
-        description: "Veuillez remplir tous les champs de la ligne",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const montant_ligne = nouvelleLigne.quantite * nouvelleLigne.prix_unitaire;
-    const ligne: LigneArticle = {
-      id: Date.now().toString(),
-      designation: nouvelleLigne.designation,
-      quantite: nouvelleLigne.quantite,
-      prix_unitaire: nouvelleLigne.prix_unitaire,
-      montant_ligne
-    };
-
-    setLignes(prev => [...prev, ligne]);
-    setNouvelleLigne({
-      designation: '',
+    const nouvelleLigne: LigneBL = {
+      id: Math.random().toString(36).substr(2, 9),
+      designation: "",
       quantite: 1,
-      prix_unitaire: 0
-    });
-    setSelectedArticle(null);
-    setSearchValue('');
+      prix_unitaire: 0,
+      montant_ligne: 0
+    };
+    setLignes([...lignes, nouvelleLigne]);
   };
 
   const supprimerLigne = (id: string) => {
-    setLignes(prev => prev.filter(ligne => ligne.id !== id));
+    setLignes(lignes.filter(ligne => ligne.id !== id));
+  };
+
+  const mettreAJourLigne = (id: string, champ: keyof LigneBL, valeur: any) => {
+    setLignes(lignes.map(ligne => {
+      if (ligne.id === id) {
+        const ligneMiseAJour = { ...ligne, [champ]: valeur };
+        // Recalculer le montant si quantité ou prix change
+        if (champ === 'quantite' || champ === 'prix_unitaire') {
+          ligneMiseAJour.montant_ligne = ligneMiseAJour.quantite * ligneMiseAJour.prix_unitaire;
+        }
+        return ligneMiseAJour;
+      }
+      return ligne;
+    }));
+  };
+
+  const handleDesignationChange = (lineIndex: number, value: string) => {
+    setSearchValue(value);
+    setActiveLineIndex(lineIndex);
+    
+    // Mettre à jour la désignation de la ligne
+    const ligne = lignes[lineIndex];
+    if (ligne) {
+      mettreAJourLigne(ligne.id, 'designation', value);
+    }
+
+    // Filtrer les articles pour l'autocomplétion
+    if (value.length >= 3) {
+      const filtered = articles.filter(article => {
+        const searchLower = value.toLowerCase().trim();
+        const designationLower = article.designation.toLowerCase();
+        return designationLower.includes(searchLower);
+      });
+      
+      console.log(`Recherche pour "${value}":`, filtered.length, 'résultats');
+      setFilteredArticles(filtered);
+      setShowSuggestions(true);
+    } else {
+      setFilteredArticles([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const selectArticle = (article: Article, lineIndex: number) => {
+    const ligne = lignes[lineIndex];
+    if (ligne) {
+      mettreAJourLigne(ligne.id, 'designation', article.designation);
+      mettreAJourLigne(ligne.id, 'prix_unitaire', Number(article.prix));
+      mettreAJourLigne(ligne.id, 'article_id', article.id);
+      // Recalculer le montant
+      const montant = ligne.quantite * Number(article.prix);
+      mettreAJourLigne(ligne.id, 'montant_ligne', montant);
+    }
+    
+    setShowSuggestions(false);
+    setSearchValue("");
+    setActiveLineIndex(null);
   };
 
   const calculerMontantTotal = () => {
     return lignes.reduce((total, ligne) => total + ligne.montant_ligne, 0);
   };
 
-  const sauvegarderBon = async () => {
-    if (!bonInfo.numero_bl || !bonInfo.fournisseur || lignes.length === 0) {
+  const validerFormulaire = () => {
+    if (!numeroBL.trim()) {
       toast({
         title: "Erreur",
-        description: "Veuillez remplir toutes les informations obligatoires et ajouter au moins une ligne",
+        description: "Le numéro de BL est requis",
         variant: "destructive"
       });
-      return;
+      return false;
     }
 
-    setSaving(true);
+    if (!fournisseur.trim()) {
+      toast({
+        title: "Erreur",
+        description: "Le fournisseur est requis",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (!dateBL) {
+      toast({
+        title: "Erreur",
+        description: "La date de BL est requise",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    const lignesValides = lignes.filter(ligne => ligne.designation.trim() && ligne.quantite > 0);
+    if (lignesValides.length === 0) {
+      toast({
+        title: "Erreur",
+        description: "Au moins une ligne d'article est requise",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  const sauvegarderBL = async () => {
+    if (!validerFormulaire()) return;
+
+    setLoading(true);
     try {
       const montantTotal = calculerMontantTotal();
-      
-      // Générer un ID unique pour le bon d'entrée
-      const bonId = `BE-${Date.now()}`;
+      const lignesValides = lignes.filter(ligne => ligne.designation.trim() && ligne.quantite > 0);
+
+      // Générer un ID pour le bon d'entrée
+      const bonId = `BL-${Date.now()}`;
 
       // Insérer le bon d'entrée
       const { error: bonError } = await supabase
         .from('bons_entree')
         .insert({
           id: bonId,
-          numero_bl: bonInfo.numero_bl,
-          fournisseur: bonInfo.fournisseur,
-          date_bl: bonInfo.date_bl,
+          numero_bl: numeroBL,
+          fournisseur: fournisseur,
+          date_bl: dateBL,
           montant_total: montantTotal,
-          notes: bonInfo.notes,
+          notes: notes || null,
           statut: 'En attente'
         });
 
       if (bonError) throw bonError;
 
-      // Insérer les lignes du bon d'entrée
-      const lignesData = lignes.map(ligne => ({
+      // Insérer les lignes
+      const lignesData = lignesValides.map(ligne => ({
         bon_entree_id: bonId,
+        article_id: ligne.article_id || null,
         designation: ligne.designation,
         quantite: ligne.quantite,
         prix_unitaire: ligne.prix_unitaire,
@@ -158,28 +220,27 @@ const CreationBonModule = () => {
       if (lignesError) throw lignesError;
 
       toast({
-        title: "Bon d'entrée créé",
-        description: `Le bon ${bonInfo.numero_bl} a été créé avec succès`,
+        title: "BL créé",
+        description: `Le bon de livraison ${numeroBL} a été créé avec succès`,
       });
 
       // Réinitialiser le formulaire
-      setBonInfo({
-        numero_bl: '',
-        fournisseur: '',
-        date_bl: new Date().toISOString().split('T')[0],
-        notes: ''
-      });
+      setNumeroBL("");
+      setFournisseur("");
+      setDateBL("");
+      setNotes("");
       setLignes([]);
+      ajouterLigne();
 
     } catch (error) {
-      console.error('Erreur lors de la création du bon:', error);
+      console.error('Erreur lors de la sauvegarde:', error);
       toast({
         title: "Erreur",
-        description: "Impossible de créer le bon d'entrée",
+        description: "Impossible de créer le bon de livraison",
         variant: "destructive"
       });
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
@@ -188,22 +249,22 @@ const CreationBonModule = () => {
       <Card className="bg-white/80 backdrop-blur-sm border shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl text-blue-700">
-            <FileText className="w-6 h-6" />
-            Création d'un Nouveau Bon d'Entrée
+            <Package className="w-6 h-6" />
+            Création d'un Nouveau Bon de Livraison
           </CardTitle>
           <CardDescription>
-            Créez un nouveau bon d'entrée en ajoutant les informations et les articles
+            Saisissez les informations du bon de livraison et ajoutez les articles
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Informations générales */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="numero_bl">Numéro BL *</Label>
+              <Label htmlFor="numeroBL">Numéro BL *</Label>
               <Input
-                id="numero_bl"
-                value={bonInfo.numero_bl}
-                onChange={(e) => setBonInfo(prev => ({ ...prev, numero_bl: e.target.value }))}
+                id="numeroBL"
+                value={numeroBL}
+                onChange={(e) => setNumeroBL(e.target.value)}
                 placeholder="Ex: BL-2024-001"
               />
             </div>
@@ -211,202 +272,148 @@ const CreationBonModule = () => {
               <Label htmlFor="fournisseur">Fournisseur *</Label>
               <Input
                 id="fournisseur"
-                value={bonInfo.fournisseur}
-                onChange={(e) => setBonInfo(prev => ({ ...prev, fournisseur: e.target.value }))}
+                value={fournisseur}
+                onChange={(e) => setFournisseur(e.target.value)}
                 placeholder="Nom du fournisseur"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="date_bl">Date BL *</Label>
+              <Label htmlFor="dateBL">Date BL *</Label>
               <Input
-                id="date_bl"
+                id="dateBL"
                 type="date"
-                value={bonInfo.date_bl}
-                onChange={(e) => setBonInfo(prev => ({ ...prev, date_bl: e.target.value }))}
+                value={dateBL}
+                onChange={(e) => setDateBL(e.target.value)}
               />
             </div>
           </div>
 
+          {/* Notes */}
           <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
+            <Label htmlFor="notes">Notes (optionnel)</Label>
             <Textarea
               id="notes"
-              value={bonInfo.notes}
-              onChange={(e) => setBonInfo(prev => ({ ...prev, notes: e.target.value }))}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               placeholder="Notes additionnelles..."
-              className="min-h-[80px]"
+              rows={3}
             />
           </div>
 
-          {/* Ajout d'article */}
-          <Card className="bg-gray-50 border-gray-200">
-            <CardHeader>
-              <CardTitle className="text-lg">Ajouter un Article</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="designation">Désignation</Label>
-                  <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={openCombobox}
-                        className="w-full justify-between"
-                      >
-                        {selectedArticle
-                          ? selectedArticle.designation
-                          : searchValue || "Rechercher un article..."}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
-                      <Command>
-                        <CommandInput 
-                          placeholder="Tapez pour rechercher..." 
-                          value={searchValue}
-                          onValueChange={(value) => {
-                            console.log('Recherche:', value);
-                            setSearchValue(value);
-                            setNouvelleLigne(prev => ({ ...prev, designation: value }));
-                            setSelectedArticle(null);
-                          }}
-                        />
-                        <CommandEmpty>Aucun article trouvé.</CommandEmpty>
-                        <CommandList>
-                          <CommandGroup>
-                            {articles
-                              .filter(article => {
-                                if (searchValue.length === 0) {
-                                  return false;
-                                }
-                                
-                                const searchLower = searchValue.toLowerCase().trim();
-                                const designationLower = article.designation.toLowerCase();
-                                
-                                console.log(`Comparaison: "${searchLower}" avec "${designationLower}"`);
-                                
-                                // Recherche dès 3 caractères avec la logique demandée
-                                if (searchValue.length >= 3) {
-                                  const searchFirst3 = searchLower.slice(0, 3);
-                                  const matches = designationLower.includes(searchFirst3);
-                                  console.log(`3+ chars: "${searchFirst3}" dans "${designationLower}": ${matches}`);
-                                  return matches;
-                                } else {
-                                  // Pour moins de 3 caractères, recherche au début
-                                  const matches = designationLower.startsWith(searchLower);
-                                  console.log(`<3 chars: "${searchLower}" startsWith "${designationLower}": ${matches}`);
-                                  return matches;
-                                }
-                              })
-                              .map((article) => (
-                                <CommandItem
-                                  key={article.id}
-                                  onSelect={() => handleArticleSelect(article)}
-                                >
-                                  <Check
-                                    className={`mr-2 h-4 w-4 ${
-                                      selectedArticle?.id === article.id ? "opacity-100" : "opacity-0"
-                                    }`}
-                                  />
-                                  <div>
-                                    <div className="font-medium">{article.designation}</div>
-                                    <div className="text-sm text-gray-500">{Number(article.prix).toFixed(3)} TND</div>
-                                  </div>
-                                </CommandItem>
-                              ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="quantite">Quantité</Label>
-                  <Input
-                    id="quantite"
-                    type="number"
-                    min="1"
-                    value={nouvelleLigne.quantite}
-                    onChange={(e) => setNouvelleLigne(prev => ({ ...prev, quantite: parseInt(e.target.value) || 1 }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="prix_unitaire">Prix Unitaire (TND)</Label>
-                  <Input
-                    id="prix_unitaire"
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    value={nouvelleLigne.prix_unitaire}
-                    onChange={(e) => setNouvelleLigne(prev => ({ ...prev, prix_unitaire: parseFloat(e.target.value) || 0 }))}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button onClick={ajouterLigne} className="w-full">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Ajouter
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Liste des articles */}
-          {lignes.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Articles du Bon d'Entrée</h3>
-              <div className="rounded-lg border bg-white shadow-sm">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50">
-                      <TableHead>Désignation</TableHead>
-                      <TableHead>Quantité</TableHead>
-                      <TableHead>Prix Unitaire</TableHead>
-                      <TableHead>Montant</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {lignes.map((ligne) => (
-                      <TableRow key={ligne.id}>
-                        <TableCell className="font-medium">{ligne.designation}</TableCell>
-                        <TableCell>{ligne.quantite}</TableCell>
-                        <TableCell>{ligne.prix_unitaire.toFixed(3)} TND</TableCell>
-                        <TableCell className="font-semibold">{ligne.montant_ligne.toFixed(3)} TND</TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
-                            onClick={() => supprimerLigne(ligne.id)}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow className="bg-gray-50 font-semibold">
-                      <TableCell colSpan={3}>Total</TableCell>
-                      <TableCell>{calculerMontantTotal().toFixed(3)} TND</TableCell>
-                      <TableCell></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
+          {/* Articles */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Articles</h3>
+              <Button onClick={ajouterLigne} size="sm" className="bg-green-500 hover:bg-green-600">
+                <Plus className="w-4 h-4 mr-2" />
+                Ajouter Article
+              </Button>
             </div>
-          )}
 
-          {/* Bouton de sauvegarde */}
-          <div className="flex justify-end pt-4">
+            <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead className="w-[40%]">Désignation</TableHead>
+                    <TableHead className="w-[15%]">Quantité</TableHead>
+                    <TableHead className="w-[20%]">Prix Unitaire</TableHead>
+                    <TableHead className="w-[20%]">Montant</TableHead>
+                    <TableHead className="w-[5%]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lignes.map((ligne, index) => (
+                    <TableRow key={ligne.id}>
+                      <TableCell className="relative">
+                        <Input
+                          value={ligne.designation}
+                          onChange={(e) => handleDesignationChange(index, e.target.value)}
+                          onFocus={() => {
+                            setActiveLineIndex(index);
+                            if (ligne.designation.length >= 3) {
+                              setShowSuggestions(true);
+                            }
+                          }}
+                          onBlur={() => {
+                            // Délai pour permettre le clic sur une suggestion
+                            setTimeout(() => {
+                              setShowSuggestions(false);
+                              setActiveLineIndex(null);
+                            }, 200);
+                          }}
+                          placeholder="Tapez 3 lettres pour rechercher..."
+                        />
+                        
+                        {/* Liste des suggestions */}
+                        {showSuggestions && activeLineIndex === index && filteredArticles.length > 0 && (
+                          <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {filteredArticles.slice(0, 10).map((article) => (
+                              <div
+                                key={article.id}
+                                className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  selectArticle(article, index);
+                                }}
+                              >
+                                <div className="font-medium">{article.designation}</div>
+                                <div className="text-gray-500 text-xs">{Number(article.prix).toFixed(3)} TND</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={ligne.quantite}
+                          onChange={(e) => mettreAJourLigne(ligne.id, 'quantite', parseInt(e.target.value) || 1)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          value={ligne.prix_unitaire}
+                          onChange={(e) => mettreAJourLigne(ligne.id, 'prix_unitaire', parseFloat(e.target.value) || 0)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">
+                          {ligne.montant_ligne.toFixed(3)} TND
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => supprimerLigne(ligne.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          {/* Total et actions */}
+          <div className="flex justify-between items-center p-4 bg-blue-50 rounded-lg">
+            <div className="text-lg font-semibold">
+              Montant Total: <span className="text-blue-700">{calculerMontantTotal().toFixed(3)} TND</span>
+            </div>
             <Button 
-              onClick={sauvegarderBon}
-              disabled={saving || lignes.length === 0}
-              className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+              onClick={sauvegarderBL}
+              disabled={loading}
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
             >
               <Save className="w-4 h-4 mr-2" />
-              {saving ? 'Enregistrement...' : 'Enregistrer le Bon d\'Entrée'}
+              {loading ? "Sauvegarde..." : "Sauvegarder BL"}
             </Button>
           </div>
         </CardContent>
