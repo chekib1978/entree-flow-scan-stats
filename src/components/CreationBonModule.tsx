@@ -282,22 +282,21 @@ const CreationBonModule = () => {
                                   return false;
                                 }
                                 
-                                const searchLower = searchValue.toLowerCase();
+                                const searchLower = searchValue.toLowerCase().trim();
                                 const designationLower = article.designation.toLowerCase();
                                 
                                 console.log(`Comparaison: "${searchLower}" avec "${designationLower}"`);
                                 
-                                if (searchValue.length >= 4) {
-                                  // Recherche précise avec les 4 premières lettres (insensible à la casse)
-                                  const searchFirst4 = searchLower.slice(0, 4);
-                                  const designationFirst4 = designationLower.slice(0, 4);
-                                  const matches = designationFirst4.startsWith(searchFirst4);
-                                  console.log(`4+ chars: "${searchFirst4}" startsWith "${designationFirst4}": ${matches}`);
+                                // Recherche dès 3 caractères avec la logique demandée
+                                if (searchValue.length >= 3) {
+                                  const searchFirst3 = searchLower.slice(0, 3);
+                                  const matches = designationLower.includes(searchFirst3);
+                                  console.log(`3+ chars: "${searchFirst3}" dans "${designationLower}": ${matches}`);
                                   return matches;
                                 } else {
-                                  // Recherche partielle pour moins de 4 caractères (insensible à la casse)
+                                  // Pour moins de 3 caractères, recherche au début
                                   const matches = designationLower.startsWith(searchLower);
-                                  console.log(`<4 chars: "${searchLower}" startsWith "${designationLower}": ${matches}`);
+                                  console.log(`<3 chars: "${searchLower}" startsWith "${designationLower}": ${matches}`);
                                   return matches;
                                 }
                               })
