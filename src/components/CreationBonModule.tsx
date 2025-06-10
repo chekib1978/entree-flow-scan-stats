@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -99,15 +98,15 @@ const CreationBonModule = () => {
       mettreAJourLigne(ligne.id, 'designation', value);
     }
 
-    // Filtrer les articles pour l'autocomplétion
+    // Filtrer les articles pour l'autocomplétion en utilisant startsWith
     if (value.length >= 3) {
       const filtered = articles.filter(article => {
         const searchLower = value.toLowerCase().trim();
         const designationLower = article.designation.toLowerCase();
-        return designationLower.includes(searchLower);
+        return designationLower.startsWith(searchLower);
       });
       
-      console.log(`Recherche pour "${value}":`, filtered.length, 'résultats');
+      console.log(`Recherche pour "${value}":`, filtered.length, 'résultats avec startsWith');
       setFilteredArticles(filtered);
       setShowSuggestions(true);
     } else {
