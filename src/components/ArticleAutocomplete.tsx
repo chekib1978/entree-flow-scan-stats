@@ -101,7 +101,7 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-full p-0" align="start">
-        <Command>
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder="Tapez pour rechercher..."
             value={value}
@@ -125,6 +125,7 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
                     {displayedArticles.map((article) => (
                       <CommandItem
                         key={article.id}
+                        value={article.designation}
                         onSelect={() => handleSelect(article)}
                         className="cursor-pointer"
                       >
