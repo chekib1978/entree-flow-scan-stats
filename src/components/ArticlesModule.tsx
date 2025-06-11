@@ -1,10 +1,10 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Upload, Plus, Search, Edit, Trash2, FileCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +16,7 @@ const ArticlesModule = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -133,6 +134,30 @@ const ArticlesModule = () => {
     }
   };
 
+  const deleteAllArticles = async () => {
+    setDeletingAll(true);
+    try {
+      const { error } = await supabase.rpc('truncate_articles');
+
+      if (error) throw error;
+
+      setArticles([]);
+      toast({
+        title: "Suppression réussie",
+        description: "Tous les articles ont été supprimés avec succès",
+      });
+    } catch (error) {
+      console.error('Erreur lors de la suppression de tous les articles:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer tous les articles",
+        variant: "destructive"
+      });
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const filteredArticles = articles.filter(article =>
     article.designation.toLowerCase().includes(searchTerm.toLowerCase()) ||
     article.code_article?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -185,6 +210,36 @@ const ArticlesModule = () => {
               <Plus className="w-4 h-4 mr-2" />
               Nouvel Article
             </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="border-red-200 hover:bg-red-50 text-red-600"
+                  disabled={articles.length === 0}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Supprimer Tout
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Êtes-vous sûr de vouloir supprimer tous les articles ? Cette action est irréversible et supprimera {articles.length} article(s).
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={deleteAllArticles}
+                    disabled={deletingAll}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    {deletingAll ? 'Suppression...' : 'Supprimer Tout'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
