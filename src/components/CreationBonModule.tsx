@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Save, Trash2, Package, X } from "lucide-react";
+import { Plus, Save, Trash2, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Article } from "@/types/database";
+import ArticleAutocomplete from "./ArticleAutocomplete";
 
 interface LigneBL {
   id: string;
@@ -26,47 +27,12 @@ const CreationBonModule = () => {
   const [dateBL, setDateBL] = useState("");
   const [notes, setNotes] = useState("");
   const [lignes, setLignes] = useState<LigneBL[]>([]);
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [searchValue, setSearchValue] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [filteredArticles, setFilteredArticles] = useState<Article[]>([]);
-  const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchArticles();
-    // Ajouter une ligne vide au démarrage
     ajouterLigne();
   }, []);
-
-  const fetchArticles = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('articles')
-        .select('*')
-        .order('designation');
-
-      if (error) throw error;
-      
-      // Nettoyer les espaces des désignations des articles
-      const cleanedArticles = (data || []).map(article => ({
-        ...article,
-        designation: article.designation.trim()
-      }));
-      
-      setArticles(cleanedArticles);
-      console.log('Articles chargés:', cleanedArticles?.length);
-      console.log('Premiers articles (après nettoyage):', cleanedArticles?.slice(0, 5).map(a => `"${a.designation}"`));
-    } catch (error) {
-      console.error('Erreur lors du chargement des articles:', error);
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger les articles",
-        variant: "destructive"
-      });
-    }
-  };
 
   const ajouterLigne = () => {
     const nouvelleLigne: LigneBL = {
@@ -97,61 +63,17 @@ const CreationBonModule = () => {
     }));
   };
 
-  const handleDesignationChange = (lineIndex: number, value: string) => {
-    setSearchValue(value);
-    setActiveLineIndex(lineIndex);
+  const handleArticleSelect = (article: Article, lineId: string) => {
+    mettreAJourLigne(lineId, 'designation', article.designation);
+    mettreAJourLigne(lineId, 'prix_unitaire', Number(article.prix));
+    mettreAJourLigne(lineId, 'article_id', article.id);
     
-    // Mettre à jour la désignation de la ligne
-    const ligne = lignes[lineIndex];
+    // Recalculer le montant avec la nouvelle quantité
+    const ligne = lignes.find(l => l.id === lineId);
     if (ligne) {
-      mettreAJourLigne(ligne.id, 'designation', value);
-    }
-
-    // Filtrer les articles pour l'autocomplétion en utilisant startsWith
-    if (value.length >= 3) {
-      // Nettoyer la valeur de recherche aussi
-      const searchLower = value.trim().toLowerCase();
-      console.log(`Recherche pour "${value}" (nettoyé: "${searchLower}")`);
-      console.log('Nombre total d\'articles:', articles.length);
-      
-      const filtered = articles.filter(article => {
-        // Les articles sont déjà nettoyés lors du chargement
-        const designationLower = article.designation.toLowerCase();
-        const matches = designationLower.startsWith(searchLower);
-        
-        // Log pour debug - afficher quelques comparaisons
-        if (articles.indexOf(article) < 5) {
-          console.log(`"${designationLower}" startsWith "${searchLower}": ${matches}`);
-        }
-        
-        return matches;
-      });
-      
-      console.log(`Recherche pour "${value}":`, filtered.length, 'résultats avec startsWith');
-      console.log('Premiers résultats:', filtered.slice(0, 3).map(a => `"${a.designation}"`));
-      
-      setFilteredArticles(filtered);
-      setShowSuggestions(true);
-    } else {
-      setFilteredArticles([]);
-      setShowSuggestions(false);
-    }
-  };
-
-  const selectArticle = (article: Article, lineIndex: number) => {
-    const ligne = lignes[lineIndex];
-    if (ligne) {
-      mettreAJourLigne(ligne.id, 'designation', article.designation);
-      mettreAJourLigne(ligne.id, 'prix_unitaire', Number(article.prix));
-      mettreAJourLigne(ligne.id, 'article_id', article.id);
-      // Recalculer le montant
       const montant = ligne.quantite * Number(article.prix);
-      mettreAJourLigne(ligne.id, 'montant_ligne', montant);
+      mettreAJourLigne(lineId, 'montant_ligne', montant);
     }
-    
-    setShowSuggestions(false);
-    setSearchValue("");
-    setActiveLineIndex(null);
   };
 
   const calculerMontantTotal = () => {
@@ -344,46 +266,15 @@ const CreationBonModule = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lignes.map((ligne, index) => (
+                  {lignes.map((ligne) => (
                     <TableRow key={ligne.id}>
-                      <TableCell className="relative">
-                        <Input
+                      <TableCell>
+                        <ArticleAutocomplete
                           value={ligne.designation}
-                          onChange={(e) => handleDesignationChange(index, e.target.value)}
-                          onFocus={() => {
-                            setActiveLineIndex(index);
-                            if (ligne.designation.length >= 3) {
-                              setShowSuggestions(true);
-                            }
-                          }}
-                          onBlur={() => {
-                            // Délai pour permettre le clic sur une suggestion
-                            setTimeout(() => {
-                              setShowSuggestions(false);
-                              setActiveLineIndex(null);
-                            }, 200);
-                          }}
-                          placeholder="Tapez 3 lettres pour rechercher..."
+                          onSelect={(article) => handleArticleSelect(article, ligne.id)}
+                          onValueChange={(value) => mettreAJourLigne(ligne.id, 'designation', value)}
+                          placeholder="Rechercher un article..."
                         />
-                        
-                        {/* Liste des suggestions */}
-                        {showSuggestions && activeLineIndex === index && filteredArticles.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
-                            {filteredArticles.slice(0, 10).map((article) => (
-                              <div
-                                key={article.id}
-                                className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  selectArticle(article, index);
-                                }}
-                              >
-                                <div className="font-medium">{article.designation}</div>
-                                <div className="text-gray-500 text-xs">{Number(article.prix).toFixed(3)} TND</div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </TableCell>
                       <TableCell>
                         <Input
