@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -108,17 +109,18 @@ const CreationBonModule = () => {
 
     // Filtrer les articles pour l'autocomplétion en utilisant startsWith
     if (value.length >= 3) {
-      const searchLower = value.toLowerCase().trim();
-      console.log(`Recherche pour "${value}" (${searchLower})`);
+      // Nettoyer la valeur de recherche aussi
+      const searchLower = value.trim().toLowerCase();
+      console.log(`Recherche pour "${value}" (nettoyé: "${searchLower}")`);
       console.log('Nombre total d\'articles:', articles.length);
       
       const filtered = articles.filter(article => {
-        // S'assurer que la désignation est nettoyée
-        const designationLower = article.designation.trim().toLowerCase();
+        // Les articles sont déjà nettoyés lors du chargement
+        const designationLower = article.designation.toLowerCase();
         const matches = designationLower.startsWith(searchLower);
         
         // Log pour debug - afficher quelques comparaisons
-        if (articles.indexOf(article) < 3) {
+        if (articles.indexOf(article) < 5) {
           console.log(`"${designationLower}" startsWith "${searchLower}": ${matches}`);
         }
         
@@ -126,6 +128,7 @@ const CreationBonModule = () => {
       });
       
       console.log(`Recherche pour "${value}":`, filtered.length, 'résultats avec startsWith');
+      console.log('Premiers résultats:', filtered.slice(0, 3).map(a => `"${a.designation}"`));
       
       setFilteredArticles(filtered);
       setShowSuggestions(true);

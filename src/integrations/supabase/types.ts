@@ -234,6 +234,18 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      search_articles: {
+        Args: { search_term: string }
+        Returns: {
+          id: string
+          designation: string
+          prix: number
+        }[]
+      }
+      truncate_articles: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       uuid_generate_v1: {
         Args: Record<PropertyKey, never>
         Returns: string
