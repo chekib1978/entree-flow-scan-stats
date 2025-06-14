@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -18,72 +18,62 @@ interface ArticleAutocompleteProps {
 const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Rechercher un article..." }: ArticleAutocompleteProps) => {
   const [open, setOpen] = useState(false);
   const [articles, setArticles] = useState<Article[]>([]);
-  const [filteredArticles, setFilteredArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
 
+  // Charger le nombre total d'articles une seule fois
   useEffect(() => {
-    fetchAllArticles();
+    const getTotalCount = async () => {
+      const { count } = await supabase
+        .from('articles')
+        .select('*', { count: 'exact', head: true });
+      setTotalCount(count || 0);
+    };
+    getTotalCount();
   }, []);
 
-  const fetchAllArticles = async () => {
-    console.log('Récupération de TOUS les articles...');
+  const searchArticles = async (searchTerm: string) => {
+    if (searchTerm.length < 2) {
+      setArticles([]);
+      return;
+    }
+
+    console.log('Recherche en temps réel pour:', searchTerm);
     setLoading(true);
+    
     try {
-      let allArticles: Article[] = [];
-      let from = 0;
-      const batchSize = 1000;
-      let hasMore = true;
+      const { data, error } = await supabase
+        .from('articles')
+        .select('*')
+        .ilike('designation', `${searchTerm}%`)
+        .order('designation')
+        .limit(20);
 
-      while (hasMore) {
-        console.log(`Récupération du batch ${from} à ${from + batchSize - 1}`);
-        
-        const { data, error, count } = await supabase
-          .from('articles')
-          .select('*', { count: 'exact' })
-          .order('designation')
-          .range(from, from + batchSize - 1);
-
-        if (error) {
-          console.error('Erreur Supabase:', error);
-          throw error;
-        }
-
-        if (data && data.length > 0) {
-          allArticles = [...allArticles, ...data];
-          console.log(`Articles récupérés dans ce batch: ${data.length}, Total: ${allArticles.length}`);
-        }
-
-        // Vérifier s'il y a plus d'articles
-        hasMore = data && data.length === batchSize;
-        from += batchSize;
-
-        // Log du count total pour la première requête
-        if (from === batchSize && count !== null) {
-          console.log(`Nombre total d'articles dans la base: ${count}`);
-        }
+      if (error) {
+        console.error('Erreur lors de la recherche:', error);
+        return;
       }
-      
-      console.log(`TOTAL FINAL d'articles récupérés: ${allArticles.length}`);
-      
-      const cleanedArticles = allArticles.map(article => ({
-        ...article,
-        designation: article.designation.trim()
-      }));
-      
-      setArticles(cleanedArticles);
-      
-      // Vérifier spécifiquement les articles commençant par CL
-      const clArticles = cleanedArticles.filter(a => a.designation.toLowerCase().startsWith('cl'));
-      console.log('Articles commençant par CL:', clArticles.length, clArticles.map(a => a.designation));
+
+      console.log(`Trouvé ${data?.length || 0} articles pour "${searchTerm}"`);
+      setArticles(data || []);
       
     } catch (error) {
-      console.error('Erreur lors du chargement des articles:', error);
+      console.error('Erreur lors de la recherche:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  // Debounce pour éviter trop de requêtes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchArticles(searchValue);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchValue]);
 
   const handleSearch = (searchValue: string) => {
     console.log('Recherche pour:', searchValue);
@@ -93,27 +83,7 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
     // Si on efface le champ, réinitialiser la sélection
     if (searchValue.length === 0) {
       setSelectedArticle(null);
-    }
-    
-    if (searchValue.length >= 2) {
-      const searchLower = searchValue.trim().toLowerCase();
-      console.log('Terme de recherche nettoyé:', searchLower);
-      console.log('Nombre total d\'articles à filtrer:', articles.length);
-      
-      const filtered = articles.filter(article => {
-        const articleDesignation = article.designation.toLowerCase().trim();
-        const match = articleDesignation.startsWith(searchLower);
-        return match;
-      });
-      
-      console.log('Articles filtrés avec startsWith:', filtered.length);
-      if (searchLower === 'cl') {
-        console.log('Articles filtrés pour "cl":', filtered.map(a => a.designation));
-      }
-      setFilteredArticles(filtered);
-    } else {
-      console.log('Recherche trop courte, reset des résultats');
-      setFilteredArticles([]);
+      setArticles([]);
     }
   };
 
@@ -123,10 +93,8 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
     setSearchValue("");
     onSelect(article);
     setOpen(false);
-    setFilteredArticles([]);
+    setArticles([]);
   };
-
-  const displayedArticles = filteredArticles.slice(0, 10);
 
   // Afficher le nom complet de l'article sélectionné ou la valeur de recherche
   const displayValue = selectedArticle ? selectedArticle.designation : searchValue;
@@ -148,28 +116,28 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
       <PopoverContent className="w-full p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder={`Tapez pour rechercher... (${articles.length} articles chargés)`}
+            placeholder={`Recherche rapide... (${totalCount} articles)`}
             value={searchValue}
             onValueChange={handleSearch}
           />
           <CommandList>
             {loading ? (
               <div className="py-6 text-center text-sm">
-                Chargement de tous les articles...
+                Recherche en cours...
               </div>
             ) : (
               <>
-                {searchValue.length >= 2 && displayedArticles.length === 0 ? (
-                  <CommandEmpty>Aucun article trouvé pour "{searchValue}" parmi {articles.length} articles</CommandEmpty>
+                {searchValue.length >= 2 && articles.length === 0 && !loading ? (
+                  <CommandEmpty>Aucun article trouvé pour "{searchValue}"</CommandEmpty>
                 ) : searchValue.length < 2 ? (
                   <div className="py-6 text-center text-sm text-gray-500">
-                    Tapez au moins 2 caractères pour rechercher parmi {articles.length} articles
+                    Tapez au moins 2 caractères pour rechercher
                   </div>
                 ) : null}
                 
-                {displayedArticles.length > 0 && (
+                {articles.length > 0 && (
                   <CommandGroup>
-                    {displayedArticles.map((article) => (
+                    {articles.map((article) => (
                       <CommandItem
                         key={article.id}
                         value={article.designation}
