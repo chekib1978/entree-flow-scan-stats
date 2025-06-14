@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,13 +37,21 @@ export const useBLForm = () => {
   };
 
   const mettreAJourLigne = (id: string, champ: keyof LigneBL, valeur: any) => {
+    console.log(`Mise à jour ligne ${id}: ${champ} = ${valeur}`);
+    
     setLignes(lignes.map(ligne => {
       if (ligne.id === id) {
         const ligneMiseAJour = { ...ligne, [champ]: valeur };
+        
         // Recalculer le montant si quantité ou prix change
         if (champ === 'quantite' || champ === 'prix_unitaire') {
-          ligneMiseAJour.montant_ligne = ligneMiseAJour.quantite * ligneMiseAJour.prix_unitaire;
+          const nouvelleQuantite = champ === 'quantite' ? Number(valeur) : ligne.quantite;
+          const nouveauPrix = champ === 'prix_unitaire' ? Number(valeur) : ligne.prix_unitaire;
+          ligneMiseAJour.montant_ligne = nouvelleQuantite * nouveauPrix;
+          
+          console.log(`Nouveau montant calculé: ${nouvelleQuantite} x ${nouveauPrix} = ${ligneMiseAJour.montant_ligne}`);
         }
+        
         return ligneMiseAJour;
       }
       return ligne;
@@ -52,29 +59,50 @@ export const useBLForm = () => {
   };
 
   const handleArticleSelect = (article: Article, lineId: string) => {
-    mettreAJourLigne(lineId, 'designation', article.designation);
-    mettreAJourLigne(lineId, 'prix_unitaire', Number(article.prix));
-    mettreAJourLigne(lineId, 'article_id', article.id);
+    console.log('Article sélectionné:', article);
     
-    // Recalculer le montant avec la nouvelle quantité
-    const ligne = lignes.find(l => l.id === lineId);
-    if (ligne) {
-      const montant = ligne.quantite * Number(article.prix);
-      mettreAJourLigne(lineId, 'montant_ligne', montant);
-    }
+    setLignes(lignes.map(ligne => {
+      if (ligne.id === lineId) {
+        const ligneMiseAJour = {
+          ...ligne,
+          designation: article.designation,
+          prix_unitaire: Number(article.prix),
+          article_id: article.id,
+          montant_ligne: ligne.quantite * Number(article.prix)
+        };
+        
+        console.log(`Montant ligne calculé: ${ligne.quantite} x ${Number(article.prix)} = ${ligneMiseAJour.montant_ligne}`);
+        return ligneMiseAJour;
+      }
+      return ligne;
+    }));
   };
 
   const handleArticleValueChange = (value: string, lineId: string) => {
     // Si l'utilisateur tape manuellement, mettre à jour seulement la désignation
-    if (value !== lignes.find(l => l.id === lineId)?.designation) {
-      mettreAJourLigne(lineId, 'designation', value);
-      // Réinitialiser l'article_id si l'utilisateur modifie manuellement
-      mettreAJourLigne(lineId, 'article_id', undefined);
+    const ligne = lignes.find(l => l.id === lineId);
+    if (ligne && value !== ligne.designation) {
+      setLignes(lignes.map(l => {
+        if (l.id === lineId) {
+          return {
+            ...l,
+            designation: value,
+            article_id: undefined // Réinitialiser l'article_id si l'utilisateur modifie manuellement
+          };
+        }
+        return l;
+      }));
     }
   };
 
   const calculerMontantTotal = () => {
-    return lignes.reduce((total, ligne) => total + ligne.montant_ligne, 0);
+    const total = lignes.reduce((total, ligne) => {
+      const montantLigne = Number(ligne.montant_ligne) || 0;
+      return total + montantLigne;
+    }, 0);
+    
+    console.log('Montant total calculé:', total);
+    return total;
   };
 
   const validerFormulaire = () => {
