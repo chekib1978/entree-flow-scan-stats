@@ -47,7 +47,15 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
       }));
       
       setArticles(cleanedArticles);
-      console.log('Articles nettoyés:', cleanedArticles);
+      console.log('Articles nettoyés:', cleanedArticles.length);
+      
+      // Log quelques exemples d'articles pour vérifier
+      console.log('Premiers 10 articles:', cleanedArticles.slice(0, 10).map(a => a.designation));
+      
+      // Vérifier spécifiquement les articles commençant par CL
+      const clArticles = cleanedArticles.filter(a => a.designation.toLowerCase().startsWith('cl'));
+      console.log('Articles commençant par CL:', clArticles.length, clArticles.map(a => a.designation));
+      
     } catch (error) {
       console.error('Erreur lors du chargement des articles:', error);
     } finally {
@@ -62,15 +70,19 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
     if (searchValue.length >= 2) {
       const searchLower = searchValue.trim().toLowerCase();
       console.log('Terme de recherche nettoyé:', searchLower);
+      console.log('Nombre total d\'articles à filtrer:', articles.length);
       
       const filtered = articles.filter(article => {
         const articleDesignation = article.designation.toLowerCase().trim();
         const match = articleDesignation.startsWith(searchLower);
-        console.log(`Article "${article.designation}" (nettoyé: "${articleDesignation}") startsWith "${searchLower}": ${match}`);
+        if (searchLower === 'cl' || match) {
+          console.log(`Article "${article.designation}" (nettoyé: "${articleDesignation}") startsWith "${searchLower}": ${match}`);
+        }
         return match;
       });
       
       console.log('Articles filtrés avec startsWith:', filtered.length);
+      console.log('Articles filtrés:', filtered.map(a => a.designation));
       setFilteredArticles(filtered);
     } else {
       console.log('Recherche trop courte, reset des résultats');
