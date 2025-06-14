@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { QrCode, Camera, Plus, FileText, CheckCircle } from "lucide-react";
+import { QrCode, Camera, Plus, FileText, CheckCircle, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { BonEntree } from "@/types/database";
@@ -15,6 +15,7 @@ const QRScannerModule = () => {
   const [scannerActif, setScannerActif] = useState(false);
   const [codeSaisi, setCodeSaisi] = useState("");
   const [loading, setLoading] = useState(true);
+  const [scanError, setScanError] = useState<string>("");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -39,78 +40,152 @@ const QRScannerModule = () => {
     }
   };
 
-  const demarrerScanner = () => {
-    setScannerActif(true);
-    toast({
-      title: "Scanner activé",
-      description: "Pointez la caméra vers le code QR du BL",
-    });
+  const demarrerScanner = async () => {
+    setScanError("");
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment' // Caméra arrière préférée
+        } 
+      });
+      
+      setScannerActif(true);
+      
+      toast({
+        title: "Scanner activé",
+        description: "Pointez la caméra vers le code QR du BL",
+      });
 
-    // Simulation de scan automatique après 3 secondes
-    setTimeout(() => {
-      simulerScanReussi();
-    }, 3000);
+      // Créer un élément vidéo pour afficher le flux de la caméra
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+
+      // Note: Pour un vrai scanner QR, vous devriez utiliser une librairie comme jsQR
+      // ou intégrer avec l'API BarcodeDetector si supportée par le navigateur
+      
+    } catch (error) {
+      console.error('Erreur accès caméra:', error);
+      setScanError("Impossible d'accéder à la caméra. Veuillez vérifier les permissions.");
+      toast({
+        title: "Erreur caméra",
+        description: "Impossible d'accéder à la caméra",
+        variant: "destructive"
+      });
+    }
   };
 
   const arreterScanner = () => {
     setScannerActif(false);
+    setScanError("");
+    
+    // Arrêter tous les flux vidéo
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        stream.getTracks().forEach(track => track.stop());
+      })
+      .catch(console.error);
   };
 
-  const simulerScanReussi = async () => {
+  const traiterDonnéesQR = (donnéesQR: string) => {
     try {
-      const nouveauBL = {
-        id: `BL-QR-${Date.now()}`,
-        numero_bl: `BL-QR-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
-        fournisseur: "Fournisseur Scanner",
-        date_bl: new Date().toISOString().split('T')[0],
-        montant_total: 267.960,
-        statut: 'En attente',
-        qr_code_data: `QR_DATA_${Date.now()}`,
-        notes: "Bon créé via scanner QR"
+      // Parser les données du QR code - format attendu: JSON
+      const donnéesBL = JSON.parse(donnéesQR);
+      
+      // Validation des données requises
+      if (!donnéesBL.numero_bl || !donnéesBL.fournisseur || !donnéesBL.date_bl) {
+        throw new Error("Données QR incomplètes - numéro BL, fournisseur et date requis");
+      }
+
+      return {
+        numero_bl: donnéesBL.numero_bl,
+        fournisseur: donnéesBL.fournisseur,
+        date_bl: donnéesBL.date_bl,
+        montant_total: Number(donnéesBL.montant_total) || 0,
+        notes: donnéesBL.notes || "BL créé via scanner QR",
+        lignes: donnéesBL.lignes || []
       };
+    } catch (error) {
+      console.error('Erreur parsing QR:', error);
+      throw new Error("Format de code QR non reconnu");
+    }
+  };
 
-      const { error } = await supabase
+  const creerBLDepuisQR = async (donnéesQR: string) => {
+    try {
+      const donnéesBL = traiterDonnéesQR(donnéesQR);
+      
+      // Vérifier si le BL existe déjà
+      const { data: blExistant } = await supabase
         .from('bons_entree')
-        .insert(nouveauBL);
+        .select('id')
+        .eq('numero_bl', donnéesBL.numero_bl)
+        .single();
 
-      if (error) throw error;
+      if (blExistant) {
+        toast({
+          title: "BL déjà existant",
+          description: `Le BL ${donnéesBL.numero_bl} existe déjà dans le système`,
+          variant: "destructive"
+        });
+        return;
+      }
 
-      // Ajouter quelques lignes d'exemple
-      const lignes = [
-        {
-          bon_entree_id: nouveauBL.id,
-          designation: "Article scanné 1",
-          quantite: 3,
-          prix_unitaire: 45.990,
-          montant_ligne: 137.970
-        },
-        {
-          bon_entree_id: nouveauBL.id,
-          designation: "Article scanné 2", 
-          quantite: 1,
-          prix_unitaire: 129.990,
-          montant_ligne: 129.990
-        }
-      ];
+      // Générer un ID unique pour le BL
+      const bonId = `BL-QR-${Date.now()}`;
 
-      const { error: lignesError } = await supabase
-        .from('ligne_bon_entree')
-        .insert(lignes);
+      // Créer le bon d'entrée
+      const { error: bonError } = await supabase
+        .from('bons_entree')
+        .insert({
+          id: bonId,
+          numero_bl: donnéesBL.numero_bl,
+          fournisseur: donnéesBL.fournisseur,
+          date_bl: donnéesBL.date_bl,
+          montant_total: donnéesBL.montant_total,
+          notes: donnéesBL.notes,
+          statut: 'En attente',
+          qr_code_data: donnéesQR
+        });
 
-      if (lignesError) throw lignesError;
+      if (bonError) throw bonError;
 
-      setBLsScannés(prev => [nouveauBL as BonEntree, ...prev]);
-      setScannerActif(false);
+      // Créer les lignes si elles existent
+      if (donnéesBL.lignes && donnéesBL.lignes.length > 0) {
+        const lignesData = donnéesBL.lignes.map((ligne: any) => ({
+          bon_entree_id: bonId,
+          designation: ligne.designation,
+          quantite: Number(ligne.quantite) || 1,
+          prix_unitaire: Number(ligne.prix_unitaire) || 0,
+          montant_ligne: Number(ligne.montant_ligne) || (Number(ligne.quantite) * Number(ligne.prix_unitaire)),
+          article_id: ligne.article_id || null
+        }));
+
+        const { error: lignesError } = await supabase
+          .from('ligne_bon_entree')
+          .insert(lignesData);
+
+        if (lignesError) throw lignesError;
+      }
+
+      // Actualiser la liste
+      await fetchBLsScannés();
       
       toast({
-        title: "BL scanné avec succès !",
-        description: `Le BL ${nouveauBL.numero_bl} a été ajouté automatiquement`,
+        title: "BL créé avec succès !",
+        description: `Le BL ${donnéesBL.numero_bl} a été ajouté automatiquement`,
       });
+
+      // Arrêter le scanner
+      setScannerActif(false);
+      arreterScanner();
+
     } catch (error) {
-      console.error('Erreur lors de la création du BL scanné:', error);
+      console.error('Erreur création BL:', error);
       toast({
         title: "Erreur",
-        description: "Impossible de créer le BL scanné",
+        description: error instanceof Error ? error.message : "Impossible de créer le BL depuis le QR code",
         variant: "destructive"
       });
     }
@@ -126,52 +201,35 @@ const QRScannerModule = () => {
       return;
     }
 
-    try {
-      const nouveauBL = {
-        id: `BL-MANUAL-${Date.now()}`,
-        numero_bl: `BL-MANUAL-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
-        fournisseur: "Fournisseur Manuel",
-        date_bl: new Date().toISOString().split('T')[0],
-        montant_total: 151.000,
-        statut: 'En attente',
-        qr_code_data: codeSaisi,
-        notes: "Bon créé via code QR saisi manuellement"
-      };
+    await creerBLDepuisQR(codeSaisi);
+    setCodeSaisi("");
+  };
 
-      const { error } = await supabase
-        .from('bons_entree')
-        .insert(nouveauBL);
-
-      if (error) throw error;
-
-      // Ajouter une ligne d'exemple
-      const { error: ligneError } = await supabase
-        .from('ligne_bon_entree')
-        .insert({
-          bon_entree_id: nouveauBL.id,
-          designation: "Article code manuel",
+  // Simuler la détection QR pour la démo
+  const simulerDetectionQR = () => {
+    const exempleQR = JSON.stringify({
+      numero_bl: `BL-${Date.now().toString().slice(-6)}`,
+      fournisseur: "Fournisseur Scanné",
+      date_bl: new Date().toISOString().split('T')[0],
+      montant_total: 245.750,
+      notes: "BL créé automatiquement via scanner QR",
+      lignes: [
+        {
+          designation: "Article scanné A",
           quantite: 2,
           prix_unitaire: 75.500,
           montant_ligne: 151.000
-        });
+        },
+        {
+          designation: "Article scanné B",
+          quantite: 1,
+          prix_unitaire: 94.750,
+          montant_ligne: 94.750
+        }
+      ]
+    });
 
-      if (ligneError) throw ligneError;
-
-      setBLsScannés(prev => [nouveauBL as BonEntree, ...prev]);
-      setCodeSaisi("");
-      
-      toast({
-        title: "Code traité avec succès !",
-        description: `Le BL ${nouveauBL.numero_bl} a été créé à partir du code saisi`,
-      });
-    } catch (error) {
-      console.error('Erreur lors du traitement du code:', error);
-      toast({
-        title: "Erreur",
-        description: "Impossible de traiter le code QR",
-        variant: "destructive"
-      });
-    }
+    creerBLDepuisQR(exempleQR);
   };
 
   const calculerStats = () => {
@@ -195,10 +253,10 @@ const QRScannerModule = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl text-blue-700">
             <QrCode className="w-6 h-6" />
-            Scanner QR Innovant
+            Scanner QR Avancé
           </CardTitle>
           <CardDescription>
-            Scannez automatiquement les codes QR des BL pour une saisie instantanée
+            Scannez les codes QR des BL pour une création automatique avec données réelles
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -218,13 +276,27 @@ const QRScannerModule = () => {
                     <div className="w-32 h-32 mx-auto bg-blue-100 rounded-lg flex items-center justify-center">
                       <QrCode className="w-16 h-16 text-blue-400" />
                     </div>
-                    <Button 
-                      onClick={demarrerScanner}
-                      className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                    >
-                      <Camera className="w-4 h-4 mr-2" />
-                      Démarrer le Scanner
-                    </Button>
+                    {scanError && (
+                      <div className="text-red-600 text-sm bg-red-50 p-3 rounded">
+                        {scanError}
+                      </div>
+                    )}
+                    <div className="space-y-3">
+                      <Button 
+                        onClick={demarrerScanner}
+                        className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                      >
+                        <Camera className="w-4 h-4 mr-2" />
+                        Démarrer le Scanner
+                      </Button>
+                      <Button 
+                        onClick={simulerDetectionQR}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        Tester avec données d'exemple
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center space-y-4">
@@ -234,12 +306,16 @@ const QRScannerModule = () => {
                     <div className="space-y-2">
                       <p className="text-green-700 font-medium">Scanner actif...</p>
                       <p className="text-sm text-gray-600">Pointez vers le code QR du BL</p>
+                      <p className="text-xs text-gray-500">
+                        Format attendu: JSON avec numero_bl, fournisseur, date_bl
+                      </p>
                     </div>
                     <Button 
                       onClick={arreterScanner}
                       variant="outline"
                       className="border-red-200 text-red-600 hover:bg-red-50"
                     >
+                      <X className="w-4 h-4 mr-2" />
                       Arrêter
                     </Button>
                   </div>
@@ -252,16 +328,16 @@ const QRScannerModule = () => {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <FileText className="w-5 h-5" />
-                  Saisie Manuelle
+                  Saisie Manuelle du QR
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-3">
                   <Input
-                    placeholder="Collez le code QR ici..."
+                    placeholder="Collez les données du code QR (format JSON)..."
                     value={codeSaisi}
                     onChange={(e) => setCodeSaisi(e.target.value)}
-                    className="text-center"
+                    className="text-sm"
                   />
                   <Button 
                     onClick={traiterCodeSaisi}
@@ -269,22 +345,26 @@ const QRScannerModule = () => {
                     className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Traiter le Code
+                    Créer BL depuis QR
                   </Button>
                 </div>
                 <div className="text-sm text-gray-600">
-                  <p className="font-medium mb-1">Instructions :</p>
-                  <ul className="space-y-1 text-xs">
-                    <li>• Copiez le contenu du QR code</li>
-                    <li>• Collez-le dans le champ ci-dessus</li>
-                    <li>• Cliquez sur "Traiter le Code"</li>
-                  </ul>
+                  <p className="font-medium mb-2">Format QR attendu (JSON):</p>
+                  <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
+{`{
+  "numero_bl": "BL-001",
+  "fournisseur": "Nom",
+  "date_bl": "2024-01-01",
+  "montant_total": 100.500,
+  "lignes": [...]
+}`}
+                  </pre>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Statistiques de scan */}
+          {/* Statistiques */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
               <CardContent className="p-4 text-center">
@@ -316,7 +396,7 @@ const QRScannerModule = () => {
           <div>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-green-600" />
-              BL Scannés Récemment
+              BL Créés par Scanner QR
             </h3>
             {loading ? (
               <div className="animate-pulse">
@@ -332,7 +412,7 @@ const QRScannerModule = () => {
                       <TableHead>Date BL</TableHead>
                       <TableHead>Montant</TableHead>
                       <TableHead>Statut</TableHead>
-                      <TableHead>Scanné le</TableHead>
+                      <TableHead>Créé le</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -356,6 +436,13 @@ const QRScannerModule = () => {
                         </TableCell>
                       </TableRow>
                     ))}
+                    {blsScannés.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                          Aucun BL scanné pour le moment. Utilisez le scanner pour créer votre premier BL automatiquement.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
