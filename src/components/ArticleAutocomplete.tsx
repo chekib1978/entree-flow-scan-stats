@@ -64,12 +64,12 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
       console.log('Terme de recherche nettoyé:', searchLower);
       
       const filtered = articles.filter(article => {
-        const match = article.designation.toLowerCase().includes(searchLower);
-        console.log(`Article "${article.designation}" match: ${match}`);
+        const match = article.designation.toLowerCase().startsWith(searchLower);
+        console.log(`Article "${article.designation}" startsWith match: ${match}`);
         return match;
       });
       
-      console.log('Articles filtrés:', filtered.length);
+      console.log('Articles filtrés avec startsWith:', filtered.length);
       setFilteredArticles(filtered);
     } else {
       console.log('Recherche trop courte, reset des résultats');
