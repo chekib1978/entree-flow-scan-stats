@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +8,7 @@ import { QrCode, Camera, Plus, FileText, CheckCircle, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { BonEntree } from "@/types/database";
+import QrScanner from 'react-qr-scanner';
 
 const QRScannerModule = () => {
   const [blsScannés, setBLsScannés] = useState<BonEntree[]>([]);
@@ -16,6 +16,8 @@ const QRScannerModule = () => {
   const [codeSaisi, setCodeSaisi] = useState("");
   const [loading, setLoading] = useState(true);
   const [scanError, setScanError] = useState<string>("");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,9 +48,18 @@ const QRScannerModule = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: 'environment' // Caméra arrière préférée
+          facingMode: 'environment', // Caméra arrière préférée
+          width: { ideal: 640 },
+          height: { ideal: 480 }
         } 
       });
+      
+      streamRef.current = stream;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
       
       setScannerActif(true);
       
@@ -57,14 +68,6 @@ const QRScannerModule = () => {
         description: "Pointez la caméra vers le code QR du BL",
       });
 
-      // Créer un élément vidéo pour afficher le flux de la caméra
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      video.play();
-
-      // Note: Pour un vrai scanner QR, vous devriez utiliser une librairie comme jsQR
-      // ou intégrer avec l'API BarcodeDetector si supportée par le navigateur
-      
     } catch (error) {
       console.error('Erreur accès caméra:', error);
       setScanError("Impossible d'accéder à la caméra. Veuillez vérifier les permissions.");
@@ -80,12 +83,27 @@ const QRScannerModule = () => {
     setScannerActif(false);
     setScanError("");
     
-    // Arrêter tous les flux vidéo
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => {
-        stream.getTracks().forEach(track => track.stop());
-      })
-      .catch(console.error);
+    // Arrêter le flux vidéo
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const handleScan = (data: string | null) => {
+    if (data && scannerActif) {
+      console.log('QR Code détecté:', data);
+      creerBLDepuisQR(data);
+    }
+  };
+
+  const handleError = (err: any) => {
+    console.error('Erreur scanner QR:', err);
+    setScanError("Erreur lors du scan du QR code");
   };
 
   const traiterDonnéesQR = (donnéesQR: string) => {
@@ -273,7 +291,7 @@ const QRScannerModule = () => {
               <CardContent className="space-y-4">
                 {!scannerActif ? (
                   <div className="text-center space-y-4">
-                    <div className="w-32 h-32 mx-auto bg-blue-100 rounded-lg flex items-center justify-center">
+                    <div className="w-64 h-48 mx-auto bg-blue-100 rounded-lg flex items-center justify-center">
                       <QrCode className="w-16 h-16 text-blue-400" />
                     </div>
                     {scanError && (
@@ -300,11 +318,30 @@ const QRScannerModule = () => {
                   </div>
                 ) : (
                   <div className="text-center space-y-4">
-                    <div className="w-32 h-32 mx-auto bg-green-100 rounded-lg flex items-center justify-center animate-pulse">
-                      <Camera className="w-16 h-16 text-green-500" />
+                    {/* Aperçu de la caméra */}
+                    <div className="relative w-64 h-48 mx-auto bg-black rounded-lg overflow-hidden">
+                      <QrScanner
+                        delay={300}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                        }}
+                        onError={handleError}
+                        onScan={handleScan}
+                      />
+                      {/* Overlay pour le cadre de scan */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-48 h-36 border-2 border-green-400 rounded-lg bg-transparent">
+                          <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-lg"></div>
+                          <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-green-400 rounded-tr-lg"></div>
+                          <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-green-400 rounded-bl-lg"></div>
+                          <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-400 rounded-br-lg"></div>
+                        </div>
+                      </div>
                     </div>
+                    
                     <div className="space-y-2">
-                      <p className="text-green-700 font-medium">Scanner actif...</p>
+                      <p className="text-green-700 font-medium">Scanner actif - Caméra en marche</p>
                       <p className="text-sm text-gray-600">Pointez vers le code QR du BL</p>
                       <p className="text-xs text-gray-500">
                         Format attendu: JSON avec numero_bl, fournisseur, date_bl
@@ -316,7 +353,7 @@ const QRScannerModule = () => {
                       className="border-red-200 text-red-600 hover:bg-red-50"
                     >
                       <X className="w-4 h-4 mr-2" />
-                      Arrêter
+                      Arrêter Scanner
                     </Button>
                   </div>
                 )}
