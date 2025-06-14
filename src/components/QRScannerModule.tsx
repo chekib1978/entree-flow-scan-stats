@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { QrCode, Camera, Plus, FileText, CheckCircle, X } from "lucide-react";
+import { QrCode, Camera, Plus, FileText, CheckCircle, X, Lightbulb, Focus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { BonEntree } from "@/types/database";
@@ -34,12 +34,15 @@ const QRScannerModule = () => {
   const initializeCodeReader = () => {
     try {
       const hints = new Map();
+      // Optimisé pour QR codes sur papier
       hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
       hints.set(DecodeHintType.TRY_HARDER, true);
       hints.set(DecodeHintType.CHARACTER_SET, 'UTF-8');
+      // Améliorer la détection sur papier
+      hints.set(DecodeHintType.PURE_BARCODE, false);
       
       codeReader.current = new BrowserMultiFormatReader(hints);
-      console.log('Scanner QR initialisé pour laptop');
+      console.log('Scanner QR initialisé pour lecture papier');
     } catch (error) {
       console.error('Erreur initialisation scanner:', error);
       codeReader.current = new BrowserMultiFormatReader();
@@ -64,7 +67,7 @@ const QRScannerModule = () => {
     }
   };
 
-  const waitForVideoElement = async (maxAttempts = 10): Promise<HTMLVideoElement> => {
+  const waitForVideoElement = async (maxAttempts = 15): Promise<HTMLVideoElement> => {
     for (let i = 0; i < maxAttempts; i++) {
       if (videoRef.current) {
         return videoRef.current;
@@ -85,17 +88,18 @@ const QRScannerModule = () => {
     scanningRef.current = true;
     
     try {
-      console.log('Démarrage scanner laptop...');
+      console.log('Démarrage scanner pour lecture papier...');
       
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 300));
       const videoElement = await waitForVideoElement();
       
+      // Optimisé pour la lecture de QR codes sur papier
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'user',
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 15, min: 10 }
+          facingMode: 'environment', // Caméra arrière si disponible
+          width: { ideal: 1920, min: 1280 }, // Résolution plus élevée
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30, min: 15 } // Frame rate plus élevé
         }
       });
 
@@ -120,45 +124,41 @@ const QRScannerModule = () => {
         videoElement.play().catch(reject);
       });
 
-      // Attendre stabilisation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Attendre stabilisation vidéo
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       if (!scanningRef.current) return;
 
-      console.log('Démarrage détection QR...');
+      console.log('Démarrage détection QR pour papier...');
       
-      // Scanner en continu sans logique de retry agressive
-      const startContinuousScanning = () => {
-        if (!scanningRef.current || !codeReader.current) return;
-        
+      // Scanner optimisé pour papier
+      if (codeReader.current) {
         codeReader.current.decodeFromVideoDevice(
           undefined,
           videoElement,
           (result, error) => {
             if (result && scanningRef.current) {
-              console.log('QR Code détecté:', result.getText());
+              console.log('QR Code détecté sur papier:', result.getText());
               scanningRef.current = false;
               creerBLDepuisQR(result.getText());
               return;
             }
             
-            // Ignorer les erreurs normales de détection
+            // Log seulement les erreurs importantes
             if (error && !error.name.includes('NotFoundException')) {
-              console.warn('Erreur scan:', error.name);
+              console.warn('Erreur scan papier:', error.name);
             }
           }
         );
-      };
-
-      startContinuousScanning();
+      }
       
       toast({
-        title: "Scanner activé",
-        description: "Présentez le QR code devant la caméra",
+        title: "Scanner activé pour papier",
+        description: "Positionnez le document bien éclairé et stable",
       });
 
     } catch (error: any) {
-      console.error('Erreur scanner:', error);
+      console.error('Erreur scanner papier:', error);
       
       let messageErreur = "Impossible d'accéder à la caméra";
       if (error.name === 'NotAllowedError') {
@@ -364,13 +364,32 @@ const QRScannerModule = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl text-blue-700">
             <QrCode className="w-6 h-6" />
-            Scanner QR Code
+            Scanner QR Code - Lecture sur Papier
           </CardTitle>
           <CardDescription>
-            Scanner optimisé pour caméras laptop - Maintenez le QR code stable et bien éclairé
+            Scanner optimisé pour lire les QR codes imprimés sur les feuilles BL
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Conseils pour la lecture sur papier */}
+          <Card className="bg-amber-50 border-amber-200">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <Lightbulb className="w-5 h-5 text-amber-600 mt-0.5" />
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-amber-800">Conseils pour scanner sur papier :</h4>
+                  <ul className="text-sm text-amber-700 space-y-1">
+                    <li>• Assurez-vous que l'éclairage est suffisant</li>
+                    <li>• Tenez le document stable sans bouger</li>
+                    <li>• Gardez une distance de 15-25 cm</li>
+                    <li>• Évitez les reflets sur le papier</li>
+                    <li>• Le QR code doit être bien visible et net</li>
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Zone de scan */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Scanner caméra */}
@@ -378,14 +397,17 @@ const QRScannerModule = () => {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Camera className="w-5 h-5" />
-                  Scanner Caméra
+                  Scanner Caméra (Papier)
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {!scannerActif ? (
                   <div className="text-center space-y-4">
-                    <div className="w-64 h-48 mx-auto bg-blue-100 rounded-lg flex items-center justify-center">
-                      <QrCode className="w-16 h-16 text-blue-400" />
+                    <div className="w-64 h-48 mx-auto bg-blue-100 rounded-lg flex items-center justify-center border-2 border-dashed border-blue-300">
+                      <div className="text-center">
+                        <QrCode className="w-16 h-16 text-blue-400 mx-auto mb-2" />
+                        <p className="text-sm text-blue-600">Lecture QR sur papier</p>
+                      </div>
                     </div>
                     {scanError && (
                       <div className="text-red-600 text-sm bg-red-50 p-3 rounded border border-red-200">
@@ -399,7 +421,7 @@ const QRScannerModule = () => {
                         className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
                       >
                         <Camera className="w-4 h-4 mr-2" />
-                        Démarrer Scanner
+                        Démarrer Scanner Papier
                       </Button>
                       <Button 
                         onClick={simulerDetectionQR}
@@ -424,22 +446,31 @@ const QRScannerModule = () => {
                         muted
                         playsInline
                       />
+                      {/* Zone de ciblage optimisée pour papier */}
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-48 h-36 border-2 border-green-400 rounded-lg bg-transparent">
-                          <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-lg"></div>
-                          <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-green-400 rounded-tr-lg"></div>
-                          <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-green-400 rounded-bl-lg"></div>
-                          <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-400 rounded-br-lg"></div>
+                        <div className="w-52 h-40 border-3 border-green-400 rounded-lg bg-transparent relative">
+                          {/* Coins de visée */}
+                          <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-green-400 rounded-tl-lg"></div>
+                          <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-green-400 rounded-tr-lg"></div>
+                          <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-green-400 rounded-bl-lg"></div>
+                          <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-green-400 rounded-br-lg"></div>
+                          
+                          {/* Instructions dans le cadre */}
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+                            <Focus className="w-6 h-6 text-green-400 mx-auto mb-1" />
+                            <p className="text-xs text-green-400 font-medium">Centrez le QR</p>
+                          </div>
                         </div>
                       </div>
-                      <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-xs">
-                        Scanner Actif
+                      <div className="absolute top-2 left-2 bg-green-500 text-white px-3 py-1 rounded text-xs font-medium">
+                        📄 Mode Papier Actif
                       </div>
                     </div>
                     
                     <div className="space-y-2">
-                      <p className="text-green-700 font-medium">Scanner actif</p>
-                      <p className="text-sm text-gray-600">Présentez le QR code clairement devant la caméra</p>
+                      <p className="text-green-700 font-medium">Scanner actif pour papier</p>
+                      <p className="text-sm text-gray-600">Placez le QR code dans le cadre vert</p>
+                      <p className="text-xs text-gray-500">Maintenez stable et bien éclairé</p>
                     </div>
                     <Button 
                       onClick={arreterScanner}
