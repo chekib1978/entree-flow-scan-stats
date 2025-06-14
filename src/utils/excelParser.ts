@@ -35,53 +35,61 @@ export const parseExcelFile = (file: File): Promise<ExcelImportResult> => {
         const articles: Omit<Article, 'id' | 'created_at' | 'updated_at'>[] = [];
         const errors: string[] = [];
         
-        // Parser chaque ligne (ignorer la première si c'est un en-tête, ou la traiter si besoin)
-        // Si la première ligne est un en-tête, jsonData[0] la contiendra.
-        // Nous commençons à partir de l'index 0 si pas d'en-tête ou si l'en-tête est déjà géré/attendu.
-        // Si la première ligne doit être ignorée (en-tête), commencer la boucle à index 1:
-        // const dataRows = jsonData.slice(1); // ou jsonData.slice(headerRows);
-        // Pour l'instant, on assume que toutes les lignes peuvent être des données.
+        // Détecter et ignorer les lignes d'en-tête
+        let startIndex = 0;
         
-        jsonData.forEach((row: any, index: number) => {
-          // Ignorer les lignes complètement vides ou avec moins de 2 colonnes pertinentes
+        // Vérifier si la première ligne contient des mots-clés d'en-tête
+        if (jsonData.length > 0) {
+          const firstRow = jsonData[0] as any[];
+          const isHeaderRow = firstRow.some(cell => {
+            const cellStr = cell?.toString().toLowerCase().trim() || '';
+            return ['designation', 'désignation', 'prix', 'price', 'code', 'description'].includes(cellStr);
+          });
+          
+          if (isHeaderRow) {
+            startIndex = 1; // Ignorer la première ligne
+            console.log('Ligne d\'en-tête détectée et ignorée');
+          }
+        }
+        
+        // Parser chaque ligne à partir de startIndex
+        for (let index = startIndex; index < jsonData.length; index++) {
+          const row = jsonData[index] as any[];
+          
+          // Ignorer les lignes complètement vides
           if (!row || row.filter((cell: any) => cell !== null && cell !== undefined && cell.toString().trim() !== "").length < 2) {
-            // Si vous souhaitez être strict sur le fait que les deux premières colonnes doivent avoir du contenu:
-            // if (!row || !row[0] || !row[1]) return;
-            return;
+            continue;
           }
           
           const designation = row[0]?.toString().trim();
           const prixStr = row[1]?.toString().trim();
           
           if (!designation) {
-            // Si la ligne a d'autres données mais pas de désignation, c'est une erreur.
-            // Si la ligne est globalement vide sauf peut-être pour le prix, on pourrait l'ignorer.
-            // Pour l'instant, on considère une désignation manquante comme une erreur si un prix est présent ou vice-versa.
-            if (prixStr) { // S'il y a un prix mais pas de désignation
-                errors.push(`Ligne ${index + 1}: Désignation manquante.`);
-            } // Si ni désignation ni prix, la ligne est probablement vide et déjà filtrée plus haut.
-            return; // Ne pas traiter cette ligne plus loin si désignation manque et qu'un prix existe
+            if (prixStr) {
+              errors.push(`Ligne ${index + 1}: Désignation manquante.`);
+            }
+            continue;
           }
           
           if (!prixStr) {
             errors.push(`Ligne ${index + 1} (Désignation: ${designation}): Prix manquant.`);
-            return;
+            continue;
           }
           
           // Convertir le prix en nombre
           const prix = parseFloat(prixStr.replace(',', '.'));
           if (isNaN(prix) || prix < 0) {
             errors.push(`Ligne ${index + 1} (Désignation: ${designation}): Prix invalide ('${prixStr}').`);
-            return;
+            continue;
           }
           
           articles.push({
             designation,
             prix,
-            code_article: row[2]?.toString().trim() || null, // Ajout potentiel de la colonne C pour code_article
-            description: row[3]?.toString().trim() || null   // Ajout potentiel de la colonne D pour description
+            code_article: row[2]?.toString().trim() || null,
+            description: row[3]?.toString().trim() || null
           });
-        });
+        }
         
         resolve({ articles, errors });
       } catch (error) {
