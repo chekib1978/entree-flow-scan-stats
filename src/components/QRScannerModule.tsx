@@ -50,27 +50,40 @@ const QRScannerModule = () => {
     }
   };
 
+  const waitForVideoElement = async (maxAttempts = 20): Promise<HTMLVideoElement> => {
+    for (let i = 0; i < maxAttempts; i++) {
+      console.log(`Tentative ${i + 1}/${maxAttempts} pour accéder à l'élément vidéo...`);
+      
+      if (videoRef.current) {
+        console.log('Élément vidéo trouvé !');
+        return videoRef.current;
+      }
+      
+      // Attendre 100ms avant la prochaine tentative
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    throw new Error("Impossible d'accéder à l'élément vidéo après plusieurs tentatives. L'interface n'est peut-être pas encore prête.");
+  };
+
   const demarrerScanner = async () => {
     setScanError("");
     
     try {
-      console.log('Vérification des permissions caméra...');
+      console.log('Démarrage du scanner...');
       
-      // Vérifier d'abord si l'élément vidéo est disponible
-      if (!videoRef.current) {
-        console.log('Élément vidéo non trouvé, attente...');
-        // Attendre un peu que l'élément soit rendu
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        if (!videoRef.current) {
-          throw new Error("Impossible d'accéder à l'élément vidéo. Veuillez réessayer.");
-        }
-      }
+      // D'abord s'assurer que l'état permet d'afficher l'élément vidéo
+      setScannerActif(true);
       
-      console.log('Élément vidéo trouvé, vérification des permissions...');
+      // Attendre un peu que React mette à jour l'interface
+      await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Demander l'accès à la caméra avec des contraintes simples
-      console.log('Demande d\'accès à la caméra...');
+      // Maintenant attendre que l'élément vidéo soit disponible
+      const videoElement = await waitForVideoElement();
+      
+      console.log('Élément vidéo prêt, demande d\'accès à la caméra...');
+      
+      // Demander l'accès à la caméra
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment',
@@ -82,22 +95,17 @@ const QRScannerModule = () => {
       console.log('Accès caméra obtenu, configuration du stream...');
       streamRef.current = stream;
 
-      // S'assurer que l'élément vidéo est toujours disponible
+      // Vérifier que l'élément vidéo est toujours là
       if (!videoRef.current) {
         throw new Error("Élément vidéo perdu pendant l'initialisation");
       }
 
       // Configurer le flux vidéo
-      videoRef.current.srcObject = stream;
+      videoElement.srcObject = stream;
       
       // Attendre que la vidéo soit prête
       await new Promise((resolve, reject) => {
-        if (!videoRef.current) {
-          reject(new Error("Élément vidéo non disponible"));
-          return;
-        }
-        
-        const video = videoRef.current;
+        const video = videoElement;
         
         const onLoadedData = () => {
           console.log('Vidéo chargée et prête');
@@ -127,15 +135,10 @@ const QRScannerModule = () => {
         codeReader.current = new BrowserMultiFormatReader();
       }
 
-      // Vérifier une dernière fois que l'élément vidéo est disponible
-      if (!videoRef.current) {
-        throw new Error("Élément vidéo perdu avant le démarrage du scanner");
-      }
-
       // Démarrer la détection QR en continu
       codeReader.current.decodeFromVideoDevice(
         undefined,
-        videoRef.current,
+        videoElement,
         (result, error) => {
           if (result) {
             console.log('QR Code détecté:', result.getText());
@@ -146,8 +149,6 @@ const QRScannerModule = () => {
           }
         }
       );
-      
-      setScannerActif(true);
       
       toast({
         title: "Scanner activé",
