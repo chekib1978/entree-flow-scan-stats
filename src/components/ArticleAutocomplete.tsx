@@ -64,8 +64,9 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
       console.log('Terme de recherche nettoyé:', searchLower);
       
       const filtered = articles.filter(article => {
-        const match = article.designation.toLowerCase().startsWith(searchLower);
-        console.log(`Article "${article.designation}" startsWith match: ${match}`);
+        const articleDesignation = article.designation.toLowerCase().trim();
+        const match = articleDesignation.startsWith(searchLower);
+        console.log(`Article "${article.designation}" (nettoyé: "${articleDesignation}") startsWith "${searchLower}": ${match}`);
         return match;
       });
       
