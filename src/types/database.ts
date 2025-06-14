@@ -39,7 +39,6 @@ export interface GroupeBL {
   date_creation: string;
   montant_total: number;
   nombre_bl: number;
-  statut: string;
   created_at: string;
   updated_at: string;
 }
