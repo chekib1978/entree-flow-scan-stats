@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,33 +19,29 @@ const QRScannerModule = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const codeReader = useRef<BrowserMultiFormatReader | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const scanningRef = useRef<boolean>(false);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchBLsScannés();
-    // Initialiser le lecteur de code avec des paramètres optimisés pour laptop
     initializeCodeReader();
     
     return () => {
-      // Nettoyer lors du démontage
       arreterScanner();
     };
   }, []);
 
   const initializeCodeReader = () => {
     try {
-      // Configuration optimisée pour les caméras laptop avec paramètres ZXing améliorés
       const hints = new Map();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE, BarcodeFormat.DATA_MATRIX]);
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
       hints.set(DecodeHintType.TRY_HARDER, true);
       hints.set(DecodeHintType.CHARACTER_SET, 'UTF-8');
-      // Paramètres additionnels pour améliorer la détection
-      hints.set(DecodeHintType.PURE_BARCODE, false);
       
       codeReader.current = new BrowserMultiFormatReader(hints);
-      console.log('Code reader initialisé avec paramètres ZXing optimisés pour laptop');
+      console.log('Scanner QR initialisé pour laptop');
     } catch (error) {
-      console.error('Erreur initialisation code reader:', error);
+      console.error('Erreur initialisation scanner:', error);
       codeReader.current = new BrowserMultiFormatReader();
     }
   };
@@ -69,190 +64,137 @@ const QRScannerModule = () => {
     }
   };
 
-  const waitForVideoElement = async (maxAttempts = 20): Promise<HTMLVideoElement> => {
+  const waitForVideoElement = async (maxAttempts = 10): Promise<HTMLVideoElement> => {
     for (let i = 0; i < maxAttempts; i++) {
-      console.log(`Tentative ${i + 1}/${maxAttempts} pour accéder à l'élément vidéo...`);
-      
       if (videoRef.current) {
-        console.log('Élément vidéo trouvé !');
         return videoRef.current;
       }
-      
-      // Attendre 100ms avant la prochaine tentative
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
-    throw new Error("Impossible d'accéder à l'élément vidéo après plusieurs tentatives. L'interface n'est peut-être pas encore prête.");
+    throw new Error("Élément vidéo non accessible");
   };
 
   const demarrerScanner = async () => {
+    if (scanningRef.current) {
+      console.log('Scanner déjà en cours...');
+      return;
+    }
+
     setScanError("");
+    setScannerActif(true);
+    scanningRef.current = true;
     
     try {
-      console.log('Démarrage du scanner optimisé pour laptop...');
+      console.log('Démarrage scanner laptop...');
       
-      // D'abord s'assurer que l'état permet d'afficher l'élément vidéo
-      setScannerActif(true);
-      
-      // Attendre un peu que React mette à jour l'interface
       await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Maintenant attendre que l'élément vidéo soit disponible
       const videoElement = await waitForVideoElement();
       
-      console.log('Élément vidéo prêt, demande d\'accès à la caméra laptop...');
-      
-      // Configuration optimisée pour caméras laptop (sans propriétés invalides)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'user', // Caméra frontale pour laptop
+          facingMode: 'user',
           width: { ideal: 1280, min: 640 },
           height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 30, min: 15 }
-          // Suppression des propriétés invalides: focusMode, exposureMode, whiteBalanceMode
+          frameRate: { ideal: 15, min: 10 }
         }
       });
 
-      console.log('Accès caméra laptop obtenu, configuration du stream...');
       streamRef.current = stream;
-
-      // Vérifier que l'élément vidéo est toujours là
-      if (!videoRef.current) {
-        throw new Error("Élément vidéo perdu pendant l'initialisation");
-      }
-
-      // Configurer le flux vidéo
       videoElement.srcObject = stream;
       
-      // Attendre que la vidéo soit prête et stable
       await new Promise((resolve, reject) => {
-        const video = videoElement;
-        
         const onLoadedData = () => {
-          console.log('Vidéo laptop chargée et prête');
-          video.removeEventListener('loadeddata', onLoadedData);
-          video.removeEventListener('error', onError);
+          videoElement.removeEventListener('loadeddata', onLoadedData);
+          videoElement.removeEventListener('error', onError);
           resolve(true);
         };
         
         const onError = (error: Event) => {
-          console.error('Erreur chargement vidéo laptop:', error);
-          video.removeEventListener('loadeddata', onLoadedData);
-          video.removeEventListener('error', onError);
-          reject(new Error("Erreur lors du chargement de la vidéo"));
+          videoElement.removeEventListener('loadeddata', onLoadedData);
+          videoElement.removeEventListener('error', onError);
+          reject(new Error("Erreur chargement vidéo"));
         };
         
-        video.addEventListener('loadeddata', onLoadedData);
-        video.addEventListener('error', onError);
-        
-        // Démarrer la lecture
-        video.play().catch(reject);
+        videoElement.addEventListener('loadeddata', onLoadedData);
+        videoElement.addEventListener('error', onError);
+        videoElement.play().catch(reject);
       });
 
-      // Attendre que la vidéo soit vraiment stable avant de scanner
+      // Attendre stabilisation
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      console.log('Stream vidéo laptop démarré, initialisation du scanner optimisé...');
+      if (!scanningRef.current) return;
 
-      // Réinitialiser le scanner avec des paramètres optimisés
-      if (!codeReader.current) {
-        initializeCodeReader();
-      }
-
-      // Configuration de scan optimisée pour laptop avec détection améliorée
-      let scanAttempts = 0;
-      const maxScanAttempts = 15; // Augmenté pour plus de chances
+      console.log('Démarrage détection QR...');
       
-      const startScanning = () => {
-        console.log(`Démarrage scan QR optimisé (tentative ${scanAttempts + 1}/${maxScanAttempts})`);
+      // Scanner en continu sans logique de retry agressive
+      const startContinuousScanning = () => {
+        if (!scanningRef.current || !codeReader.current) return;
         
-        // Configuration de scan avec délai optimisé pour laptop
-        codeReader.current?.decodeFromVideoDevice(
+        codeReader.current.decodeFromVideoDevice(
           undefined,
           videoElement,
           (result, error) => {
-            if (result) {
-              console.log('QR Code détecté avec succès sur laptop:', result.getText());
+            if (result && scanningRef.current) {
+              console.log('QR Code détecté:', result.getText());
+              scanningRef.current = false;
               creerBLDepuisQR(result.getText());
               return;
             }
             
-            // Gestion améliorée des erreurs de détection
-            if (error && error.name !== 'NotFoundException' && error.name !== 'NotFoundException2') {
-              console.warn('Erreur de détection QR:', error.name, error.message);
-            }
-            
-            // Stratégie de retry améliorée
-            scanAttempts++;
-            if (scanAttempts >= maxScanAttempts) {
-              console.log('Redémarrage scanner après échecs multiples...');
-              scanAttempts = 0;
-              // Redémarrage avec délai pour stabiliser
-              setTimeout(() => {
-                if (scannerActif && codeReader.current) {
-                  codeReader.current.reset();
-                  setTimeout(startScanning, 1000); // Délai plus long
-                }
-              }, 2000);
+            // Ignorer les erreurs normales de détection
+            if (error && !error.name.includes('NotFoundException')) {
+              console.warn('Erreur scan:', error.name);
             }
           }
         );
       };
 
-      startScanning();
+      startContinuousScanning();
       
       toast({
-        title: "Scanner laptop activé",
-        description: "Caméra laptop optimisée - Présentez le QR code lentement et clairement",
+        title: "Scanner activé",
+        description: "Présentez le QR code devant la caméra",
       });
 
     } catch (error: any) {
-      console.error('Erreur détaillée accès caméra laptop:', error);
+      console.error('Erreur scanner:', error);
       
-      let messageErreur = "Impossible d'accéder à la caméra laptop";
-      
+      let messageErreur = "Impossible d'accéder à la caméra";
       if (error.name === 'NotAllowedError') {
-        messageErreur = "Accès à la caméra refusé. Veuillez autoriser l'accès à la caméra dans votre navigateur et réessayer.";
+        messageErreur = "Accès caméra refusé. Autorisez l'accès dans votre navigateur.";
       } else if (error.name === 'NotFoundError') {
-        messageErreur = "Aucune caméra trouvée sur ce laptop.";
+        messageErreur = "Aucune caméra trouvée.";
       } else if (error.name === 'NotReadableError') {
-        messageErreur = "Caméra en cours d'utilisation par une autre application.";
-      } else if (error.message) {
-        messageErreur = error.message;
+        messageErreur = "Caméra utilisée par une autre application.";
       }
       
       setScanError(messageErreur);
       toast({
-        title: "Erreur caméra laptop",
+        title: "Erreur caméra",
         description: messageErreur,
         variant: "destructive"
       });
       
-      // Nettoyer en cas d'erreur
       arreterScanner();
     }
   };
 
   const arreterScanner = () => {
-    console.log('Arrêt du scanner laptop...');
+    console.log('Arrêt du scanner...');
+    scanningRef.current = false;
     setScannerActif(false);
     setScanError("");
     
-    // Arrêter le flux vidéo
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-        console.log('Track arrêté:', track.kind);
-      });
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
     
-    // Nettoyer le lecteur QR
     if (codeReader.current) {
       codeReader.current.reset();
     }
     
-    // Nettoyer l'élément vidéo
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -422,7 +364,7 @@ const QRScannerModule = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl text-blue-700">
             <QrCode className="w-6 h-6" />
-            Scanner QR Optimisé Laptop
+            Scanner QR Code
           </CardTitle>
           <CardDescription>
             Scanner optimisé pour caméras laptop - Maintenez le QR code stable et bien éclairé
@@ -436,7 +378,7 @@ const QRScannerModule = () => {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Camera className="w-5 h-5" />
-                  Scanner Caméra Laptop
+                  Scanner Caméra
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -449,9 +391,6 @@ const QRScannerModule = () => {
                       <div className="text-red-600 text-sm bg-red-50 p-3 rounded border border-red-200">
                         <p className="font-medium">Erreur:</p>
                         <p>{scanError}</p>
-                        <p className="text-xs mt-2 text-red-500">
-                          Assurez-vous d'autoriser l'accès à la caméra dans votre navigateur
-                        </p>
                       </div>
                     )}
                     <div className="space-y-3">
@@ -460,7 +399,7 @@ const QRScannerModule = () => {
                         className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
                       >
                         <Camera className="w-4 h-4 mr-2" />
-                        Démarrer Scanner Laptop
+                        Démarrer Scanner
                       </Button>
                       <Button 
                         onClick={simulerDetectionQR}
@@ -473,7 +412,6 @@ const QRScannerModule = () => {
                   </div>
                 ) : (
                   <div className="text-center space-y-4">
-                    {/* Aperçu de la caméra */}
                     <div className="relative w-64 h-48 mx-auto bg-black rounded-lg overflow-hidden">
                       <video
                         ref={videoRef}
@@ -486,7 +424,6 @@ const QRScannerModule = () => {
                         muted
                         playsInline
                       />
-                      {/* Overlay pour le cadre de scan optimisé */}
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="w-48 h-36 border-2 border-green-400 rounded-lg bg-transparent">
                           <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-lg"></div>
@@ -495,18 +432,14 @@ const QRScannerModule = () => {
                           <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-400 rounded-br-lg"></div>
                         </div>
                       </div>
-                      {/* Indicateur de scan actif */}
                       <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-xs">
-                        Laptop Scanner Actif
+                        Scanner Actif
                       </div>
                     </div>
                     
                     <div className="space-y-2">
-                      <p className="text-green-700 font-medium">Scanner laptop actif - Caméra optimisée</p>
-                      <p className="text-sm text-gray-600">Maintenez le QR code stable et bien éclairé</p>
-                      <p className="text-xs text-gray-500">
-                        Tips: Évitez les reflets, tenez le code à 20-30cm de la caméra
-                      </p>
+                      <p className="text-green-700 font-medium">Scanner actif</p>
+                      <p className="text-sm text-gray-600">Présentez le QR code clairement devant la caméra</p>
                     </div>
                     <Button 
                       onClick={arreterScanner}
