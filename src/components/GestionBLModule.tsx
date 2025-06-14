@@ -134,6 +134,13 @@ const GestionBLModule = () => {
     }
   };
 
+  const getRowColor = (statut: string) => {
+    switch (statut) {
+      case 'Groupé': return 'bg-blue-50 hover:bg-blue-100';
+      default: return 'hover:bg-gray-50';
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -158,7 +165,7 @@ const GestionBLModule = () => {
             Gestion des Bons de Livraison
           </CardTitle>
           <CardDescription>
-            Visualiser, modifier et supprimer les bons de livraison créés
+            Visualiser, modifier et supprimer les bons de livraison créés (incluant les BL groupés)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -172,6 +179,28 @@ const GestionBLModule = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
+            </div>
+          </div>
+
+          {/* Statistiques rapides */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+              <h4 className="font-semibold text-yellow-800">En attente</h4>
+              <p className="text-2xl font-bold text-yellow-700">
+                {filteredBons.filter(bl => bl.statut === 'En attente').length}
+              </p>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <h4 className="font-semibold text-blue-800">Groupés</h4>
+              <p className="text-2xl font-bold text-blue-700">
+                {filteredBons.filter(bl => bl.statut === 'Groupé').length}
+              </p>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <h4 className="font-semibold text-green-800">Traités</h4>
+              <p className="text-2xl font-bold text-green-700">
+                {filteredBons.filter(bl => bl.statut === 'Traité').length}
+              </p>
             </div>
           </div>
 
@@ -190,7 +219,7 @@ const GestionBLModule = () => {
               </TableHeader>
               <TableBody>
                 {filteredBons.map((bon) => (
-                  <TableRow key={bon.id} className="hover:bg-gray-50">
+                  <TableRow key={bon.id} className={getRowColor(bon.statut)}>
                     <TableCell className="font-medium">{bon.numero_bl}</TableCell>
                     <TableCell>{bon.fournisseur}</TableCell>
                     <TableCell>{new Date(bon.date_bl).toLocaleDateString('fr-FR')}</TableCell>
@@ -214,6 +243,7 @@ const GestionBLModule = () => {
                           size="sm"
                           variant="outline"
                           className="text-green-600 hover:text-green-700"
+                          disabled={bon.statut === 'Groupé'}
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
@@ -222,6 +252,7 @@ const GestionBLModule = () => {
                           variant="outline"
                           onClick={() => deleteBon(bon.id)}
                           className="text-red-600 hover:text-red-700"
+                          disabled={bon.statut === 'Groupé'}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -254,7 +285,9 @@ const GestionBLModule = () => {
           {selectedBon && (
             <div className="space-y-6">
               {/* Informations générales */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className={`grid grid-cols-2 gap-4 p-4 rounded-lg ${
+                selectedBon.statut === 'Groupé' ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
+              }`}>
                 <div>
                   <h4 className="font-semibold">Fournisseur</h4>
                   <p>{selectedBon.fournisseur}</p>
@@ -268,6 +301,9 @@ const GestionBLModule = () => {
                   <Badge className={getStatutColor(selectedBon.statut)}>
                     {selectedBon.statut}
                   </Badge>
+                  {selectedBon.statut === 'Groupé' && (
+                    <p className="text-sm text-blue-600 mt-1">Ce BL fait partie d'un groupe</p>
+                  )}
                 </div>
                 <div>
                   <h4 className="font-semibold">Montant Total</h4>
