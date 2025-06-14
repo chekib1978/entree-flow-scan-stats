@@ -8,7 +8,7 @@ import { QrCode, Camera, Plus, FileText, CheckCircle, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { BonEntree } from "@/types/database";
-import { BrowserMultiFormatReader } from '@zxing/library';
+import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from '@zxing/library';
 
 const QRScannerModule = () => {
   const [blsScannés, setBLsScannés] = useState<BonEntree[]>([]);
@@ -23,14 +23,30 @@ const QRScannerModule = () => {
 
   useEffect(() => {
     fetchBLsScannés();
-    // Initialiser le lecteur de code
-    codeReader.current = new BrowserMultiFormatReader();
+    // Initialiser le lecteur de code avec des paramètres optimisés pour laptop
+    initializeCodeReader();
     
     return () => {
       // Nettoyer lors du démontage
       arreterScanner();
     };
   }, []);
+
+  const initializeCodeReader = () => {
+    try {
+      // Configuration optimisée pour les caméras laptop
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      hints.set(DecodeHintType.CHARACTER_SET, 'UTF-8');
+      
+      codeReader.current = new BrowserMultiFormatReader(hints);
+      console.log('Code reader initialisé avec paramètres optimisés pour laptop');
+    } catch (error) {
+      console.error('Erreur initialisation code reader:', error);
+      codeReader.current = new BrowserMultiFormatReader();
+    }
+  };
 
   const fetchBLsScannés = async () => {
     try {
@@ -70,7 +86,7 @@ const QRScannerModule = () => {
     setScanError("");
     
     try {
-      console.log('Démarrage du scanner...');
+      console.log('Démarrage du scanner optimisé pour laptop...');
       
       // D'abord s'assurer que l'état permet d'afficher l'élément vidéo
       setScannerActif(true);
@@ -81,18 +97,23 @@ const QRScannerModule = () => {
       // Maintenant attendre que l'élément vidéo soit disponible
       const videoElement = await waitForVideoElement();
       
-      console.log('Élément vidéo prêt, demande d\'accès à la caméra...');
+      console.log('Élément vidéo prêt, demande d\'accès à la caméra laptop...');
       
-      // Demander l'accès à la caméra
+      // Configuration optimisée pour caméras laptop
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment',
-          width: { ideal: 640, min: 320 },
-          height: { ideal: 480, min: 240 }
+          facingMode: 'user', // Caméra frontale pour laptop
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          frameRate: { ideal: 30, min: 15 },
+          // Paramètres additionnels pour améliorer la qualité
+          focusMode: 'auto',
+          exposureMode: 'auto',
+          whiteBalanceMode: 'auto'
         }
       });
 
-      console.log('Accès caméra obtenu, configuration du stream...');
+      console.log('Accès caméra laptop obtenu, configuration du stream...');
       streamRef.current = stream;
 
       // Vérifier que l'élément vidéo est toujours là
@@ -103,19 +124,19 @@ const QRScannerModule = () => {
       // Configurer le flux vidéo
       videoElement.srcObject = stream;
       
-      // Attendre que la vidéo soit prête
+      // Attendre que la vidéo soit prête et stable
       await new Promise((resolve, reject) => {
         const video = videoElement;
         
         const onLoadedData = () => {
-          console.log('Vidéo chargée et prête');
+          console.log('Vidéo laptop chargée et prête');
           video.removeEventListener('loadeddata', onLoadedData);
           video.removeEventListener('error', onError);
           resolve(true);
         };
         
         const onError = (error: Event) => {
-          console.error('Erreur chargement vidéo:', error);
+          console.error('Erreur chargement vidéo laptop:', error);
           video.removeEventListener('loadeddata', onLoadedData);
           video.removeEventListener('error', onError);
           reject(new Error("Erreur lors du chargement de la vidéo"));
@@ -128,42 +149,71 @@ const QRScannerModule = () => {
         video.play().catch(reject);
       });
 
-      console.log('Stream vidéo démarré, initialisation du scanner...');
+      // Attendre que la vidéo soit vraiment stable avant de scanner
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Initialiser le scanner QR
+      console.log('Stream vidéo laptop démarré, initialisation du scanner optimisé...');
+
+      // Réinitialiser le scanner avec des paramètres optimisés
       if (!codeReader.current) {
-        codeReader.current = new BrowserMultiFormatReader();
+        initializeCodeReader();
       }
 
-      // Démarrer la détection QR en continu
-      codeReader.current.decodeFromVideoDevice(
-        undefined,
-        videoElement,
-        (result, error) => {
-          if (result) {
-            console.log('QR Code détecté:', result.getText());
-            creerBLDepuisQR(result.getText());
+      // Configuration de scan optimisée pour laptop avec plus de tentatives
+      let scanAttempts = 0;
+      const maxScanAttempts = 10;
+      
+      const startScanning = () => {
+        console.log(`Démarrage scan QR (tentative ${scanAttempts + 1}/${maxScanAttempts})`);
+        
+        codeReader.current?.decodeFromVideoDevice(
+          undefined,
+          videoElement,
+          (result, error) => {
+            if (result) {
+              console.log('QR Code détecté avec succès:', result.getText());
+              creerBLDepuisQR(result.getText());
+              return;
+            }
+            
+            // Ne logguer les erreurs que si c'est pas une NotFoundException normale
+            if (error && error.name !== 'NotFoundException' && error.name !== 'NotFoundException2') {
+              console.error('Erreur de détection QR non-standard:', error);
+            }
+            
+            // Si on a trop d'échecs, on peut essayer de redémarrer le scanner
+            scanAttempts++;
+            if (scanAttempts >= maxScanAttempts) {
+              console.log('Redémarrage du scanner après plusieurs tentatives...');
+              scanAttempts = 0;
+              // Petit délai avant de redémarrer
+              setTimeout(() => {
+                if (scannerActif && codeReader.current) {
+                  codeReader.current.reset();
+                  setTimeout(startScanning, 500);
+                }
+              }, 2000);
+            }
           }
-          if (error && error.name !== 'NotFoundException') {
-            console.error('Erreur de détection QR:', error);
-          }
-        }
-      );
+        );
+      };
+
+      startScanning();
       
       toast({
-        title: "Scanner activé",
-        description: "Caméra démarrée - Pointez vers le code QR",
+        title: "Scanner laptop activé",
+        description: "Caméra laptop démarrée - Présentez le code QR clairement",
       });
 
     } catch (error: any) {
-      console.error('Erreur détaillée accès caméra:', error);
+      console.error('Erreur détaillée accès caméra laptop:', error);
       
-      let messageErreur = "Impossible d'accéder à la caméra";
+      let messageErreur = "Impossible d'accéder à la caméra laptop";
       
       if (error.name === 'NotAllowedError') {
-        messageErreur = "Accès à la caméra refusé. Veuillez autoriser l'accès à la caméra et réessayer.";
+        messageErreur = "Accès à la caméra refusé. Veuillez autoriser l'accès à la caméra dans votre navigateur et réessayer.";
       } else if (error.name === 'NotFoundError') {
-        messageErreur = "Aucune caméra trouvée sur cet appareil.";
+        messageErreur = "Aucune caméra trouvée sur ce laptop.";
       } else if (error.name === 'NotReadableError') {
         messageErreur = "Caméra en cours d'utilisation par une autre application.";
       } else if (error.message) {
@@ -172,7 +222,7 @@ const QRScannerModule = () => {
       
       setScanError(messageErreur);
       toast({
-        title: "Erreur caméra",
+        title: "Erreur caméra laptop",
         description: messageErreur,
         variant: "destructive"
       });
@@ -183,7 +233,7 @@ const QRScannerModule = () => {
   };
 
   const arreterScanner = () => {
-    console.log('Arrêt du scanner...');
+    console.log('Arrêt du scanner laptop...');
     setScannerActif(false);
     setScanError("");
     
@@ -371,10 +421,10 @@ const QRScannerModule = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl text-blue-700">
             <QrCode className="w-6 h-6" />
-            Scanner QR Avancé
+            Scanner QR Optimisé Laptop
           </CardTitle>
           <CardDescription>
-            Scannez les codes QR des BL pour une création automatique avec données réelles
+            Scanner optimisé pour caméras laptop - Maintenez le QR code stable et bien éclairé
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -385,7 +435,7 @@ const QRScannerModule = () => {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Camera className="w-5 h-5" />
-                  Scanner par Caméra
+                  Scanner Caméra Laptop
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -409,7 +459,7 @@ const QRScannerModule = () => {
                         className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
                       >
                         <Camera className="w-4 h-4 mr-2" />
-                        Démarrer le Scanner
+                        Démarrer Scanner Laptop
                       </Button>
                       <Button 
                         onClick={simulerDetectionQR}
@@ -435,7 +485,7 @@ const QRScannerModule = () => {
                         muted
                         playsInline
                       />
-                      {/* Overlay pour le cadre de scan */}
+                      {/* Overlay pour le cadre de scan optimisé */}
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="w-48 h-36 border-2 border-green-400 rounded-lg bg-transparent">
                           <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-lg"></div>
@@ -444,13 +494,17 @@ const QRScannerModule = () => {
                           <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-400 rounded-br-lg"></div>
                         </div>
                       </div>
+                      {/* Indicateur de scan actif */}
+                      <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-xs">
+                        Laptop Scanner Actif
+                      </div>
                     </div>
                     
                     <div className="space-y-2">
-                      <p className="text-green-700 font-medium">Scanner actif - Caméra en marche</p>
-                      <p className="text-sm text-gray-600">Pointez vers le code QR du BL</p>
+                      <p className="text-green-700 font-medium">Scanner laptop actif - Caméra optimisée</p>
+                      <p className="text-sm text-gray-600">Maintenez le QR code stable et bien éclairé</p>
                       <p className="text-xs text-gray-500">
-                        Format attendu: JSON avec numero_bl, fournisseur, date_bl
+                        Tips: Évitez les reflets, tenez le code à 20-30cm de la caméra
                       </p>
                     </div>
                     <Button 
