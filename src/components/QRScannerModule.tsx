@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ const QRScannerModule = () => {
   const [scanError, setScanError] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const codeReader = useRef<BrowserMultiFormatReader | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -28,9 +28,7 @@ const QRScannerModule = () => {
     
     return () => {
       // Nettoyer lors du démontage
-      if (codeReader.current) {
-        codeReader.current.reset();
-      }
+      arreterScanner();
     };
   }, []);
 
@@ -56,23 +54,55 @@ const QRScannerModule = () => {
     setScanError("");
     
     try {
-      if (!codeReader.current || !videoRef.current) {
-        throw new Error("Scanner non initialisé");
+      console.log('Vérification des permissions caméra...');
+      
+      // Vérifier les permissions d'abord
+      const permissions = await navigator.permissions.query({ name: 'camera' as PermissionName });
+      console.log('Statut permissions caméra:', permissions.state);
+      
+      if (permissions.state === 'denied') {
+        throw new Error("Permissions caméra refusées. Veuillez autoriser l'accès à la caméra dans les paramètres de votre navigateur.");
       }
 
-      console.log('Démarrage du scanner QR...');
-      
-      // Démarrer la détection continue
-      await codeReader.current.decodeFromVideoDevice(
-        undefined, // deviceId automatique
+      // Demander l'accès à la caméra
+      console.log('Demande d\'accès à la caméra...');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'environment', // Essayer la caméra arrière d'abord
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        }
+      });
+
+      console.log('Accès caméra obtenu, démarrage du stream...');
+      streamRef.current = stream;
+
+      if (!videoRef.current) {
+        throw new Error("Élément vidéo non disponible");
+      }
+
+      // Configurer le flux vidéo
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+
+      console.log('Stream vidéo démarré, initialisation du scanner...');
+
+      // Initialiser le scanner QR
+      if (!codeReader.current) {
+        codeReader.current = new BrowserMultiFormatReader();
+      }
+
+      // Démarrer la détection QR en continu
+      codeReader.current.decodeFromVideoDevice(
+        undefined, // deviceId automatique  
         videoRef.current,
         (result, error) => {
           if (result) {
             console.log('QR Code détecté:', result.getText());
             creerBLDepuisQR(result.getText());
           }
-          if (error && !(error.name === 'NotFoundException')) {
-            console.error('Erreur de scan:', error);
+          if (error && error.name !== 'NotFoundException') {
+            console.error('Erreur de détection QR:', error);
           }
         }
       );
@@ -81,15 +111,28 @@ const QRScannerModule = () => {
       
       toast({
         title: "Scanner activé",
-        description: "Pointez la caméra vers le code QR du BL",
+        description: "Caméra démarrée - Pointez vers le code QR",
       });
 
-    } catch (error) {
-      console.error('Erreur accès caméra:', error);
-      setScanError("Impossible d'accéder à la caméra. Veuillez vérifier les permissions.");
+    } catch (error: any) {
+      console.error('Erreur détaillée accès caméra:', error);
+      
+      let messageErreur = "Impossible d'accéder à la caméra";
+      
+      if (error.name === 'NotAllowedError') {
+        messageErreur = "Accès à la caméra refusé. Veuillez autoriser l'accès à la caméra et réessayer.";
+      } else if (error.name === 'NotFoundError') {
+        messageErreur = "Aucune caméra trouvée sur cet appareil.";
+      } else if (error.name === 'NotReadableError') {
+        messageErreur = "Caméra en cours d'utilisation par une autre application.";
+      } else if (error.message) {
+        messageErreur = error.message;
+      }
+      
+      setScanError(messageErreur);
       toast({
         title: "Erreur caméra",
-        description: "Impossible d'accéder à la caméra",
+        description: messageErreur,
         variant: "destructive"
       });
     }
@@ -100,8 +143,23 @@ const QRScannerModule = () => {
     setScannerActif(false);
     setScanError("");
     
+    // Arrêter le flux vidéo
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Track arrêté:', track.kind);
+      });
+      streamRef.current = null;
+    }
+    
+    // Nettoyer le lecteur QR
     if (codeReader.current) {
       codeReader.current.reset();
+    }
+    
+    // Nettoyer l'élément vidéo
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
   };
 
@@ -293,8 +351,12 @@ const QRScannerModule = () => {
                       <QrCode className="w-16 h-16 text-blue-400" />
                     </div>
                     {scanError && (
-                      <div className="text-red-600 text-sm bg-red-50 p-3 rounded">
-                        {scanError}
+                      <div className="text-red-600 text-sm bg-red-50 p-3 rounded border border-red-200">
+                        <p className="font-medium">Erreur:</p>
+                        <p>{scanError}</p>
+                        <p className="text-xs mt-2 text-red-500">
+                          Assurez-vous d'autoriser l'accès à la caméra dans votre navigateur
+                        </p>
                       </div>
                     )}
                     <div className="space-y-3">
