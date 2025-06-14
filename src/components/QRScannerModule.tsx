@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { QrCode, Camera, Plus, FileText, CheckCircle, X, Lightbulb, Focus } from "lucide-react";
+import { QrCode, Camera, Plus, FileText, CheckCircle, X, Lightbulb, Focus, Usb } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { BonEntree } from "@/types/database";
@@ -13,13 +13,16 @@ import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from '@zxing/
 const QRScannerModule = () => {
   const [blsScannés, setBLsScannés] = useState<BonEntree[]>([]);
   const [scannerActif, setScannerActif] = useState(false);
+  const [usbScannerActif, setUsbScannerActif] = useState(false);
   const [codeSaisi, setCodeSaisi] = useState("");
   const [loading, setLoading] = useState(true);
   const [scanError, setScanError] = useState<string>("");
+  const [usbBuffer, setUsbBuffer] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const codeReader = useRef<BrowserMultiFormatReader | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanningRef = useRef<boolean>(false);
+  const usbTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -28,17 +31,62 @@ const QRScannerModule = () => {
     
     return () => {
       arreterScanner();
+      arreterUSBScanner();
     };
   }, []);
+
+  // Gestionnaire pour le scanner USB
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (!usbScannerActif) return;
+
+      // La plupart des scanners USB envoient Enter à la fin
+      if (event.key === 'Enter') {
+        if (usbBuffer.trim()) {
+          console.log('Code USB reçu:', usbBuffer);
+          creerBLDepuisQR(usbBuffer.trim());
+          setUsbBuffer("");
+        }
+        return;
+      }
+
+      // Ignorer les touches de contrôle
+      if (event.key.length > 1) return;
+
+      // Ajouter le caractère au buffer
+      setUsbBuffer(prev => prev + event.key);
+
+      // Reset du timeout - si pas d'activité pendant 100ms, on considère que c'est fini
+      if (usbTimeoutRef.current) {
+        clearTimeout(usbTimeoutRef.current);
+      }
+      
+      usbTimeoutRef.current = setTimeout(() => {
+        if (usbBuffer.trim()) {
+          console.log('Code USB reçu (timeout):', usbBuffer);
+          creerBLDepuisQR(usbBuffer.trim());
+          setUsbBuffer("");
+        }
+      }, 100);
+    };
+
+    if (usbScannerActif) {
+      document.addEventListener('keydown', handleKeyPress);
+      return () => {
+        document.removeEventListener('keydown', handleKeyPress);
+        if (usbTimeoutRef.current) {
+          clearTimeout(usbTimeoutRef.current);
+        }
+      };
+    }
+  }, [usbScannerActif, usbBuffer]);
 
   const initializeCodeReader = () => {
     try {
       const hints = new Map();
-      // Optimisé pour QR codes sur papier
       hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
       hints.set(DecodeHintType.TRY_HARDER, true);
       hints.set(DecodeHintType.CHARACTER_SET, 'UTF-8');
-      // Améliorer la détection sur papier
       hints.set(DecodeHintType.PURE_BARCODE, false);
       
       codeReader.current = new BrowserMultiFormatReader(hints);
@@ -77,7 +125,44 @@ const QRScannerModule = () => {
     throw new Error("Élément vidéo non accessible");
   };
 
+  const demarrerUSBScanner = () => {
+    if (scannerActif) {
+      toast({
+        title: "Scanner caméra actif",
+        description: "Arrêtez d'abord le scanner caméra avant d'activer le scanner USB",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setUsbScannerActif(true);
+    setUsbBuffer("");
+    setScanError("");
+    
+    toast({
+      title: "Scanner USB activé",
+      description: "Scannez un QR code avec votre lecteur USB",
+    });
+  };
+
+  const arreterUSBScanner = () => {
+    setUsbScannerActif(false);
+    setUsbBuffer("");
+    if (usbTimeoutRef.current) {
+      clearTimeout(usbTimeoutRef.current);
+    }
+  };
+
   const demarrerScanner = async () => {
+    if (usbScannerActif) {
+      toast({
+        title: "Scanner USB actif",
+        description: "Arrêtez d'abord le scanner USB avant d'activer la caméra",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (scanningRef.current) {
       console.log('Scanner déjà en cours...');
       return;
@@ -88,18 +173,17 @@ const QRScannerModule = () => {
     scanningRef.current = true;
     
     try {
-      console.log('Démarrage scanner pour lecture papier...');
+      console.log('Démarrage scanner caméra...');
       
       await new Promise(resolve => setTimeout(resolve, 300));
       const videoElement = await waitForVideoElement();
       
-      // Optimisé pour la lecture de QR codes sur papier
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment', // Caméra arrière si disponible
-          width: { ideal: 1920, min: 1280 }, // Résolution plus élevée
+          facingMode: 'environment',
+          width: { ideal: 1920, min: 1280 },
           height: { ideal: 1080, min: 720 },
-          frameRate: { ideal: 30, min: 15 } // Frame rate plus élevé
+          frameRate: { ideal: 30, min: 15 }
         }
       });
 
@@ -124,41 +208,38 @@ const QRScannerModule = () => {
         videoElement.play().catch(reject);
       });
 
-      // Attendre stabilisation vidéo
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       if (!scanningRef.current) return;
 
-      console.log('Démarrage détection QR pour papier...');
+      console.log('Démarrage détection QR caméra...');
       
-      // Scanner optimisé pour papier
       if (codeReader.current) {
         codeReader.current.decodeFromVideoDevice(
           undefined,
           videoElement,
           (result, error) => {
             if (result && scanningRef.current) {
-              console.log('QR Code détecté sur papier:', result.getText());
+              console.log('QR Code détecté caméra:', result.getText());
               scanningRef.current = false;
               creerBLDepuisQR(result.getText());
               return;
             }
             
-            // Log seulement les erreurs importantes
             if (error && !error.name.includes('NotFoundException')) {
-              console.warn('Erreur scan papier:', error.name);
+              console.warn('Erreur scan caméra:', error.name);
             }
           }
         );
       }
       
       toast({
-        title: "Scanner activé pour papier",
-        description: "Positionnez le document bien éclairé et stable",
+        title: "Scanner caméra activé",
+        description: "Positionnez le QR code devant la caméra",
       });
 
     } catch (error: any) {
-      console.error('Erreur scanner papier:', error);
+      console.error('Erreur scanner caméra:', error);
       
       let messageErreur = "Impossible d'accéder à la caméra";
       if (error.name === 'NotAllowedError') {
@@ -181,7 +262,7 @@ const QRScannerModule = () => {
   };
 
   const arreterScanner = () => {
-    console.log('Arrêt du scanner...');
+    console.log('Arrêt du scanner caméra...');
     scanningRef.current = false;
     setScannerActif(false);
     setScanError("");
@@ -202,10 +283,8 @@ const QRScannerModule = () => {
 
   const traiterDonnéesQR = (donnéesQR: string) => {
     try {
-      // Parser les données du QR code - format attendu: JSON
       const donnéesBL = JSON.parse(donnéesQR);
       
-      // Validation des données requises
       if (!donnéesBL.numero_bl || !donnéesBL.fournisseur || !donnéesBL.date_bl) {
         throw new Error("Données QR incomplètes - numéro BL, fournisseur et date requis");
       }
@@ -228,7 +307,6 @@ const QRScannerModule = () => {
     try {
       const donnéesBL = traiterDonnéesQR(donnéesQR);
       
-      // Vérifier si le BL existe déjà
       const { data: blExistant } = await supabase
         .from('bons_entree')
         .select('id')
@@ -244,10 +322,8 @@ const QRScannerModule = () => {
         return;
       }
 
-      // Générer un ID unique pour le BL
       const bonId = `BL-QR-${Date.now()}`;
 
-      // Créer le bon d'entrée
       const { error: bonError } = await supabase
         .from('bons_entree')
         .insert({
@@ -263,7 +339,6 @@ const QRScannerModule = () => {
 
       if (bonError) throw bonError;
 
-      // Créer les lignes si elles existent
       if (donnéesBL.lignes && donnéesBL.lignes.length > 0) {
         const lignesData = donnéesBL.lignes.map((ligne: any) => ({
           bon_entree_id: bonId,
@@ -281,7 +356,6 @@ const QRScannerModule = () => {
         if (lignesError) throw lignesError;
       }
 
-      // Actualiser la liste
       await fetchBLsScannés();
       
       toast({
@@ -289,8 +363,9 @@ const QRScannerModule = () => {
         description: `Le BL ${donnéesBL.numero_bl} a été ajouté automatiquement`,
       });
 
-      // Arrêter le scanner
+      // Arrêter tous les scanners
       arreterScanner();
+      arreterUSBScanner();
 
     } catch (error) {
       console.error('Erreur création BL:', error);
@@ -316,7 +391,6 @@ const QRScannerModule = () => {
     setCodeSaisi("");
   };
 
-  // Simuler la détection QR pour la démo
   const simulerDetectionQR = () => {
     const exempleQR = JSON.stringify({
       numero_bl: `BL-${Date.now().toString().slice(-6)}`,
@@ -344,7 +418,7 @@ const QRScannerModule = () => {
   };
 
   const calculerStats = () => {
-    const totalArticles = blsScannés.length * 2; // Estimation
+    const totalArticles = blsScannés.length * 2;
     const valeurTotale = blsScannés.reduce((sum, bl) => sum + Number(bl.montant_total), 0);
     const montantMoyen = blsScannés.length > 0 ? valeurTotale / blsScannés.length : 0;
 
@@ -364,26 +438,25 @@ const QRScannerModule = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl text-blue-700">
             <QrCode className="w-6 h-6" />
-            Scanner QR Code - Lecture sur Papier
+            Scanner QR Code - Caméra & Lecteur USB
           </CardTitle>
           <CardDescription>
-            Scanner optimisé pour lire les QR codes imprimés sur les feuilles BL
+            Utilisez la caméra de votre laptop ou un lecteur de code-barres USB pour scanner les QR codes
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Conseils pour la lecture sur papier */}
+          {/* Conseils pour la lecture */}
           <Card className="bg-amber-50 border-amber-200">
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
                 <Lightbulb className="w-5 h-5 text-amber-600 mt-0.5" />
                 <div className="space-y-2">
-                  <h4 className="font-semibold text-amber-800">Conseils pour scanner sur papier :</h4>
+                  <h4 className="font-semibold text-amber-800">Recommandations :</h4>
                   <ul className="text-sm text-amber-700 space-y-1">
-                    <li>• Assurez-vous que l'éclairage est suffisant</li>
-                    <li>• Tenez le document stable sans bouger</li>
-                    <li>• Gardez une distance de 15-25 cm</li>
-                    <li>• Évitez les reflets sur le papier</li>
-                    <li>• Le QR code doit être bien visible et net</li>
+                    <li>• <strong>Lecteur USB recommandé</strong> : Plus rapide et précis</li>
+                    <li>• Caméra laptop : Éclairage suffisant requis</li>
+                    <li>• Maintenir une distance de 15-25 cm avec la caméra</li>
+                    <li>• Éviter les reflets sur le papier</li>
                   </ul>
                 </div>
               </div>
@@ -391,22 +464,75 @@ const QRScannerModule = () => {
           </Card>
 
           {/* Zone de scan */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Scanner USB */}
+            <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Usb className="w-5 h-5" />
+                  Scanner USB (Recommandé)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!usbScannerActif ? (
+                  <div className="text-center space-y-4">
+                    <div className="w-full h-32 bg-green-100 rounded-lg flex items-center justify-center border-2 border-dashed border-green-300">
+                      <div className="text-center">
+                        <Usb className="w-12 h-12 text-green-400 mx-auto mb-2" />
+                        <p className="text-sm text-green-600">Lecteur USB prêt</p>
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={demarrerUSBScanner}
+                      className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+                    >
+                      <Usb className="w-4 h-4 mr-2" />
+                      Activer Scanner USB
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-center space-y-4">
+                    <div className="w-full h-32 bg-green-200 rounded-lg flex items-center justify-center border-2 border-green-400">
+                      <div className="text-center">
+                        <div className="w-6 h-6 bg-green-500 rounded-full mx-auto mb-2 animate-pulse"></div>
+                        <p className="text-sm text-green-700 font-medium">Scanner USB Actif</p>
+                        {usbBuffer && (
+                          <p className="text-xs text-green-600 mt-1">
+                            Lecture: {usbBuffer.substring(0, 20)}...
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-green-700 font-medium">En attente du scan USB</p>
+                    <p className="text-sm text-gray-600">Scannez un QR code avec votre lecteur</p>
+                    <Button 
+                      onClick={arreterUSBScanner}
+                      variant="outline"
+                      className="w-full border-red-200 text-red-600 hover:bg-red-50"
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Arrêter Scanner USB
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Scanner caméra */}
             <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Camera className="w-5 h-5" />
-                  Scanner Caméra (Papier)
+                  Scanner Caméra
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {!scannerActif ? (
                   <div className="text-center space-y-4">
-                    <div className="w-64 h-48 mx-auto bg-blue-100 rounded-lg flex items-center justify-center border-2 border-dashed border-blue-300">
+                    <div className="w-full h-32 bg-blue-100 rounded-lg flex items-center justify-center border-2 border-dashed border-blue-300">
                       <div className="text-center">
-                        <QrCode className="w-16 h-16 text-blue-400 mx-auto mb-2" />
-                        <p className="text-sm text-blue-600">Lecture QR sur papier</p>
+                        <Camera className="w-12 h-12 text-blue-400 mx-auto mb-2" />
+                        <p className="text-sm text-blue-600">Caméra laptop</p>
                       </div>
                     </div>
                     {scanError && (
@@ -415,26 +541,17 @@ const QRScannerModule = () => {
                         <p>{scanError}</p>
                       </div>
                     )}
-                    <div className="space-y-3">
-                      <Button 
-                        onClick={demarrerScanner}
-                        className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                      >
-                        <Camera className="w-4 h-4 mr-2" />
-                        Démarrer Scanner Papier
-                      </Button>
-                      <Button 
-                        onClick={simulerDetectionQR}
-                        variant="outline"
-                        className="w-full"
-                      >
-                        Tester avec données d'exemple
-                      </Button>
-                    </div>
+                    <Button 
+                      onClick={demarrerScanner}
+                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                    >
+                      <Camera className="w-4 h-4 mr-2" />
+                      Démarrer Caméra
+                    </Button>
                   </div>
                 ) : (
                   <div className="text-center space-y-4">
-                    <div className="relative w-64 h-48 mx-auto bg-black rounded-lg overflow-hidden">
+                    <div className="relative w-full h-32 bg-black rounded-lg overflow-hidden">
                       <video
                         ref={videoRef}
                         style={{
@@ -446,39 +563,20 @@ const QRScannerModule = () => {
                         muted
                         playsInline
                       />
-                      {/* Zone de ciblage optimisée pour papier */}
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-52 h-40 border-3 border-green-400 rounded-lg bg-transparent relative">
-                          {/* Coins de visée */}
-                          <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-green-400 rounded-tl-lg"></div>
-                          <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-green-400 rounded-tr-lg"></div>
-                          <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-green-400 rounded-bl-lg"></div>
-                          <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-green-400 rounded-br-lg"></div>
-                          
-                          {/* Instructions dans le cadre */}
-                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-                            <Focus className="w-6 h-6 text-green-400 mx-auto mb-1" />
-                            <p className="text-xs text-green-400 font-medium">Centrez le QR</p>
-                          </div>
+                        <div className="w-20 h-20 border-2 border-green-400 rounded-lg">
+                          <Focus className="w-4 h-4 text-green-400 mx-auto mt-6" />
                         </div>
                       </div>
-                      <div className="absolute top-2 left-2 bg-green-500 text-white px-3 py-1 rounded text-xs font-medium">
-                        📄 Mode Papier Actif
-                      </div>
                     </div>
-                    
-                    <div className="space-y-2">
-                      <p className="text-green-700 font-medium">Scanner actif pour papier</p>
-                      <p className="text-sm text-gray-600">Placez le QR code dans le cadre vert</p>
-                      <p className="text-xs text-gray-500">Maintenez stable et bien éclairé</p>
-                    </div>
+                    <p className="text-green-700 font-medium">Caméra active</p>
                     <Button 
                       onClick={arreterScanner}
                       variant="outline"
-                      className="border-red-200 text-red-600 hover:bg-red-50"
+                      className="w-full border-red-200 text-red-600 hover:bg-red-50"
                     >
                       <X className="w-4 h-4 mr-2" />
-                      Arrêter Scanner
+                      Arrêter Caméra
                     </Button>
                   </div>
                 )}
@@ -486,17 +584,17 @@ const QRScannerModule = () => {
             </Card>
 
             {/* Saisie manuelle */}
-            <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+            <Card className="bg-gradient-to-br from-purple-50 to-violet-50 border-purple-200">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <FileText className="w-5 h-5" />
-                  Saisie Manuelle du QR
+                  Saisie Manuelle
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-3">
                   <Input
-                    placeholder="Collez les données du code QR (format JSON)..."
+                    placeholder="Collez les données du QR..."
                     value={codeSaisi}
                     onChange={(e) => setCodeSaisi(e.target.value)}
                     className="text-sm"
@@ -504,23 +602,18 @@ const QRScannerModule = () => {
                   <Button 
                     onClick={traiterCodeSaisi}
                     disabled={!codeSaisi.trim()}
-                    className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+                    className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Créer BL depuis QR
+                    Créer BL
                   </Button>
-                </div>
-                <div className="text-sm text-gray-600">
-                  <p className="font-medium mb-2">Format QR attendu (JSON):</p>
-                  <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
-{`{
-  "numero_bl": "BL-001",
-  "fournisseur": "Nom",
-  "date_bl": "2024-01-01",
-  "montant_total": 100.500,
-  "lignes": [...]
-}`}
-                  </pre>
+                  <Button 
+                    onClick={simulerDetectionQR}
+                    variant="outline"
+                    className="w-full text-xs"
+                  >
+                    Test avec exemple
+                  </Button>
                 </div>
               </CardContent>
             </Card>
