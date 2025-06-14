@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,14 +35,16 @@ const QRScannerModule = () => {
 
   const initializeCodeReader = () => {
     try {
-      // Configuration optimisée pour les caméras laptop
+      // Configuration optimisée pour les caméras laptop avec paramètres ZXing améliorés
       const hints = new Map();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE, BarcodeFormat.DATA_MATRIX]);
       hints.set(DecodeHintType.TRY_HARDER, true);
       hints.set(DecodeHintType.CHARACTER_SET, 'UTF-8');
+      // Paramètres additionnels pour améliorer la détection
+      hints.set(DecodeHintType.PURE_BARCODE, false);
       
       codeReader.current = new BrowserMultiFormatReader(hints);
-      console.log('Code reader initialisé avec paramètres optimisés pour laptop');
+      console.log('Code reader initialisé avec paramètres ZXing optimisés pour laptop');
     } catch (error) {
       console.error('Erreur initialisation code reader:', error);
       codeReader.current = new BrowserMultiFormatReader();
@@ -99,17 +102,14 @@ const QRScannerModule = () => {
       
       console.log('Élément vidéo prêt, demande d\'accès à la caméra laptop...');
       
-      // Configuration optimisée pour caméras laptop
+      // Configuration optimisée pour caméras laptop (sans propriétés invalides)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user', // Caméra frontale pour laptop
           width: { ideal: 1280, min: 640 },
           height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 30, min: 15 },
-          // Paramètres additionnels pour améliorer la qualité
-          focusMode: 'auto',
-          exposureMode: 'auto',
-          whiteBalanceMode: 'auto'
+          frameRate: { ideal: 30, min: 15 }
+          // Suppression des propriétés invalides: focusMode, exposureMode, whiteBalanceMode
         }
       });
 
@@ -159,38 +159,39 @@ const QRScannerModule = () => {
         initializeCodeReader();
       }
 
-      // Configuration de scan optimisée pour laptop avec plus de tentatives
+      // Configuration de scan optimisée pour laptop avec détection améliorée
       let scanAttempts = 0;
-      const maxScanAttempts = 10;
+      const maxScanAttempts = 15; // Augmenté pour plus de chances
       
       const startScanning = () => {
-        console.log(`Démarrage scan QR (tentative ${scanAttempts + 1}/${maxScanAttempts})`);
+        console.log(`Démarrage scan QR optimisé (tentative ${scanAttempts + 1}/${maxScanAttempts})`);
         
+        // Configuration de scan avec délai optimisé pour laptop
         codeReader.current?.decodeFromVideoDevice(
           undefined,
           videoElement,
           (result, error) => {
             if (result) {
-              console.log('QR Code détecté avec succès:', result.getText());
+              console.log('QR Code détecté avec succès sur laptop:', result.getText());
               creerBLDepuisQR(result.getText());
               return;
             }
             
-            // Ne logguer les erreurs que si c'est pas une NotFoundException normale
+            // Gestion améliorée des erreurs de détection
             if (error && error.name !== 'NotFoundException' && error.name !== 'NotFoundException2') {
-              console.error('Erreur de détection QR non-standard:', error);
+              console.warn('Erreur de détection QR:', error.name, error.message);
             }
             
-            // Si on a trop d'échecs, on peut essayer de redémarrer le scanner
+            // Stratégie de retry améliorée
             scanAttempts++;
             if (scanAttempts >= maxScanAttempts) {
-              console.log('Redémarrage du scanner après plusieurs tentatives...');
+              console.log('Redémarrage scanner après échecs multiples...');
               scanAttempts = 0;
-              // Petit délai avant de redémarrer
+              // Redémarrage avec délai pour stabiliser
               setTimeout(() => {
                 if (scannerActif && codeReader.current) {
                   codeReader.current.reset();
-                  setTimeout(startScanning, 500);
+                  setTimeout(startScanning, 1000); // Délai plus long
                 }
               }, 2000);
             }
@@ -202,7 +203,7 @@ const QRScannerModule = () => {
       
       toast({
         title: "Scanner laptop activé",
-        description: "Caméra laptop démarrée - Présentez le code QR clairement",
+        description: "Caméra laptop optimisée - Présentez le QR code lentement et clairement",
       });
 
     } catch (error: any) {
