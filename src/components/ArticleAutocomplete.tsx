@@ -22,35 +22,55 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchArticles();
+    fetchAllArticles();
   }, []);
 
-  const fetchArticles = async () => {
-    console.log('Fetching articles...');
+  const fetchAllArticles = async () => {
+    console.log('Récupération de TOUS les articles...');
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('articles')
-        .select('*')
-        .order('designation');
+      let allArticles: Article[] = [];
+      let from = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (error) {
-        console.error('Erreur Supabase:', error);
-        throw error;
+      while (hasMore) {
+        console.log(`Récupération du batch ${from} à ${from + batchSize - 1}`);
+        
+        const { data, error, count } = await supabase
+          .from('articles')
+          .select('*', { count: 'exact' })
+          .order('designation')
+          .range(from, from + batchSize - 1);
+
+        if (error) {
+          console.error('Erreur Supabase:', error);
+          throw error;
+        }
+
+        if (data && data.length > 0) {
+          allArticles = [...allArticles, ...data];
+          console.log(`Articles récupérés dans ce batch: ${data.length}, Total: ${allArticles.length}`);
+        }
+
+        // Vérifier s'il y a plus d'articles
+        hasMore = data && data.length === batchSize;
+        from += batchSize;
+
+        // Log du count total pour la première requête
+        if (from === batchSize && count !== null) {
+          console.log(`Nombre total d'articles dans la base: ${count}`);
+        }
       }
       
-      console.log('Articles récupérés:', data?.length || 0);
+      console.log(`TOTAL FINAL d'articles récupérés: ${allArticles.length}`);
       
-      const cleanedArticles = (data || []).map(article => ({
+      const cleanedArticles = allArticles.map(article => ({
         ...article,
         designation: article.designation.trim()
       }));
       
       setArticles(cleanedArticles);
-      console.log('Articles nettoyés:', cleanedArticles.length);
-      
-      // Log quelques exemples d'articles pour vérifier
-      console.log('Premiers 10 articles:', cleanedArticles.slice(0, 10).map(a => a.designation));
       
       // Vérifier spécifiquement les articles commençant par CL
       const clArticles = cleanedArticles.filter(a => a.designation.toLowerCase().startsWith('cl'));
@@ -75,14 +95,13 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
       const filtered = articles.filter(article => {
         const articleDesignation = article.designation.toLowerCase().trim();
         const match = articleDesignation.startsWith(searchLower);
-        if (searchLower === 'cl' || match) {
-          console.log(`Article "${article.designation}" (nettoyé: "${articleDesignation}") startsWith "${searchLower}": ${match}`);
-        }
         return match;
       });
       
       console.log('Articles filtrés avec startsWith:', filtered.length);
-      console.log('Articles filtrés:', filtered.map(a => a.designation));
+      if (searchLower === 'cl') {
+        console.log('Articles filtrés pour "cl":', filtered.map(a => a.designation));
+      }
       setFilteredArticles(filtered);
     } else {
       console.log('Recherche trop courte, reset des résultats');
@@ -97,7 +116,6 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
   };
 
   const displayedArticles = filteredArticles.slice(0, 10);
-  console.log('Articles à afficher:', displayedArticles.length);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -116,20 +134,22 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
       <PopoverContent className="w-full p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Tapez pour rechercher..."
+            placeholder={`Tapez pour rechercher... (${articles.length} articles chargés)`}
             value={value}
             onValueChange={handleSearch}
           />
           <CommandList>
             {loading ? (
-              <div className="py-6 text-center text-sm">Chargement...</div>
+              <div className="py-6 text-center text-sm">
+                Chargement de tous les articles...
+              </div>
             ) : (
               <>
                 {value.length >= 2 && displayedArticles.length === 0 ? (
-                  <CommandEmpty>Aucun article trouvé pour "{value}"</CommandEmpty>
+                  <CommandEmpty>Aucun article trouvé pour "{value}" parmi {articles.length} articles</CommandEmpty>
                 ) : value.length < 2 ? (
                   <div className="py-6 text-center text-sm text-gray-500">
-                    Tapez au moins 2 caractères pour rechercher
+                    Tapez au moins 2 caractères pour rechercher parmi {articles.length} articles
                   </div>
                 ) : null}
                 
