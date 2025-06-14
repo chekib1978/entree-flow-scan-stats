@@ -56,34 +56,69 @@ const QRScannerModule = () => {
     try {
       console.log('Vérification des permissions caméra...');
       
-      // Vérifier les permissions d'abord
-      const permissions = await navigator.permissions.query({ name: 'camera' as PermissionName });
-      console.log('Statut permissions caméra:', permissions.state);
-      
-      if (permissions.state === 'denied') {
-        throw new Error("Permissions caméra refusées. Veuillez autoriser l'accès à la caméra dans les paramètres de votre navigateur.");
+      // Vérifier d'abord si l'élément vidéo est disponible
+      if (!videoRef.current) {
+        console.log('Élément vidéo non trouvé, attente...');
+        // Attendre un peu que l'élément soit rendu
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        if (!videoRef.current) {
+          throw new Error("Impossible d'accéder à l'élément vidéo. Veuillez réessayer.");
+        }
       }
-
-      // Demander l'accès à la caméra
+      
+      console.log('Élément vidéo trouvé, vérification des permissions...');
+      
+      // Demander l'accès à la caméra avec des contraintes simples
       console.log('Demande d\'accès à la caméra...');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment', // Essayer la caméra arrière d'abord
-          width: { ideal: 640 },
-          height: { ideal: 480 }
+          facingMode: 'environment',
+          width: { ideal: 640, min: 320 },
+          height: { ideal: 480, min: 240 }
         }
       });
 
-      console.log('Accès caméra obtenu, démarrage du stream...');
+      console.log('Accès caméra obtenu, configuration du stream...');
       streamRef.current = stream;
 
+      // S'assurer que l'élément vidéo est toujours disponible
       if (!videoRef.current) {
-        throw new Error("Élément vidéo non disponible");
+        throw new Error("Élément vidéo perdu pendant l'initialisation");
       }
 
       // Configurer le flux vidéo
       videoRef.current.srcObject = stream;
-      await videoRef.current.play();
+      
+      // Attendre que la vidéo soit prête
+      await new Promise((resolve, reject) => {
+        if (!videoRef.current) {
+          reject(new Error("Élément vidéo non disponible"));
+          return;
+        }
+        
+        const video = videoRef.current;
+        
+        const onLoadedData = () => {
+          console.log('Vidéo chargée et prête');
+          video.removeEventListener('loadeddata', onLoadedData);
+          video.removeEventListener('error', onError);
+          resolve(true);
+        };
+        
+        const onError = (error: Event) => {
+          console.error('Erreur chargement vidéo:', error);
+          video.removeEventListener('loadeddata', onLoadedData);
+          video.removeEventListener('error', onError);
+          reject(new Error("Erreur lors du chargement de la vidéo"));
+        };
+        
+        video.addEventListener('loadeddata', onLoadedData);
+        video.addEventListener('error', onError);
+        
+        // Démarrer la lecture
+        video.play().catch(reject);
+      });
 
       console.log('Stream vidéo démarré, initialisation du scanner...');
 
@@ -92,9 +127,14 @@ const QRScannerModule = () => {
         codeReader.current = new BrowserMultiFormatReader();
       }
 
+      // Vérifier une dernière fois que l'élément vidéo est disponible
+      if (!videoRef.current) {
+        throw new Error("Élément vidéo perdu avant le démarrage du scanner");
+      }
+
       // Démarrer la détection QR en continu
       codeReader.current.decodeFromVideoDevice(
-        undefined, // deviceId automatique  
+        undefined,
         videoRef.current,
         (result, error) => {
           if (result) {
@@ -135,6 +175,9 @@ const QRScannerModule = () => {
         description: messageErreur,
         variant: "destructive"
       });
+      
+      // Nettoyer en cas d'erreur
+      arreterScanner();
     }
   };
 
