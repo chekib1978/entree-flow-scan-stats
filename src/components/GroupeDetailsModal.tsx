@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FileText, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { GroupeBL } from "@/types/database";
+import * as XLSX from 'xlsx';
 
 interface GroupeDetailsModalProps {
   groupe: GroupeBL | null;
@@ -51,6 +52,65 @@ const GroupeDetailsModal = ({ groupe, open, onOpenChange }: GroupeDetailsModalPr
 
   const calculerMontantTotalGroupe = () => {
     return details.reduce((total, article) => total + Number(article.montant_total_article), 0);
+  };
+
+  const exportToExcel = () => {
+    if (!groupe || details.length === 0) return;
+
+    // Préparer les données pour l'export
+    const dataForExcel = details.map(article => ({
+      'Désignation Article': article.designation,
+      'Quantité Totale': article.quantite_totale,
+      'Prix Unitaire Moyen (TND)': Number(article.prix_unitaire_moyen).toFixed(3),
+      'Montant Total Article (TND)': Number(article.montant_total_article).toFixed(3)
+    }));
+
+    // Ajouter une ligne de total
+    dataForExcel.push({
+      'Désignation Article': 'TOTAL GÉNÉRAL',
+      'Quantité Totale': details.reduce((sum, article) => sum + Number(article.quantite_totale), 0),
+      'Prix Unitaire Moyen (TND)': '-',
+      'Montant Total Article (TND)': calculerMontantTotalGroupe().toFixed(3)
+    });
+
+    // Créer le classeur Excel
+    const ws = XLSX.utils.json_to_sheet(dataForExcel);
+    const wb = XLSX.utils.book_new();
+    
+    // Ajouter des informations sur le groupe en en-tête
+    const headerData = [
+      ['Rapport Détaillé du Groupe BL'],
+      ['Nom du Groupe:', groupe.nom],
+      ['Date de Création:', new Date(groupe.date_creation).toLocaleDateString('fr-FR')],
+      ['Nombre de BL:', groupe.nombre_bl],
+      ['Montant Total:', `${groupe.montant_total.toFixed(3)} TND`],
+      [''],
+      ['Détail des Articles:']
+    ];
+
+    // Insérer les données d'en-tête
+    XLSX.utils.sheet_add_aoa(ws, headerData, { origin: 'A1' });
+    
+    // Décaler les données du tableau
+    XLSX.utils.sheet_add_json(ws, dataForExcel, { 
+      origin: 'A8',
+      skipHeader: false 
+    });
+
+    // Ajuster la largeur des colonnes
+    const colWidths = [
+      { wch: 30 }, // Désignation Article
+      { wch: 15 }, // Quantité Totale
+      { wch: 20 }, // Prix Unitaire Moyen
+      { wch: 25 }  // Montant Total Article
+    ];
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Détail Groupe BL');
+
+    // Télécharger le fichier
+    const fileName = `Groupe_${groupe.nom.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   };
 
   if (!groupe) return null;
@@ -140,7 +200,11 @@ const GroupeDetailsModal = ({ groupe, open, onOpenChange }: GroupeDetailsModalPr
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Fermer
             </Button>
-            <Button className="bg-green-600 hover:bg-green-700">
+            <Button 
+              onClick={exportToExcel}
+              disabled={details.length === 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
               <Download className="w-4 h-4 mr-2" />
               Exporter Excel
             </Button>
