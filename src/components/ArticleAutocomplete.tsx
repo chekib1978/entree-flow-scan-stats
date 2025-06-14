@@ -20,6 +20,8 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
   const [articles, setArticles] = useState<Article[]>([]);
   const [filteredArticles, setFilteredArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
 
   useEffect(() => {
     fetchAllArticles();
@@ -85,7 +87,13 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
 
   const handleSearch = (searchValue: string) => {
     console.log('Recherche pour:', searchValue);
+    setSearchValue(searchValue);
     onValueChange(searchValue);
+    
+    // Si on efface le champ, réinitialiser la sélection
+    if (searchValue.length === 0) {
+      setSelectedArticle(null);
+    }
     
     if (searchValue.length >= 2) {
       const searchLower = searchValue.trim().toLowerCase();
@@ -111,11 +119,17 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
 
   const handleSelect = (article: Article) => {
     console.log('Article sélectionné:', article);
+    setSelectedArticle(article);
+    setSearchValue("");
     onSelect(article);
     setOpen(false);
+    setFilteredArticles([]);
   };
 
   const displayedArticles = filteredArticles.slice(0, 10);
+
+  // Afficher le nom complet de l'article sélectionné ou la valeur de recherche
+  const displayValue = selectedArticle ? selectedArticle.designation : searchValue;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -127,7 +141,7 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
           className="w-full justify-between"
           onClick={() => setOpen(true)}
         >
-          {value || placeholder}
+          {displayValue || placeholder}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -135,7 +149,7 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
         <Command shouldFilter={false}>
           <CommandInput
             placeholder={`Tapez pour rechercher... (${articles.length} articles chargés)`}
-            value={value}
+            value={searchValue}
             onValueChange={handleSearch}
           />
           <CommandList>
@@ -145,9 +159,9 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
               </div>
             ) : (
               <>
-                {value.length >= 2 && displayedArticles.length === 0 ? (
-                  <CommandEmpty>Aucun article trouvé pour "{value}" parmi {articles.length} articles</CommandEmpty>
-                ) : value.length < 2 ? (
+                {searchValue.length >= 2 && displayedArticles.length === 0 ? (
+                  <CommandEmpty>Aucun article trouvé pour "{searchValue}" parmi {articles.length} articles</CommandEmpty>
+                ) : searchValue.length < 2 ? (
                   <div className="py-6 text-center text-sm text-gray-500">
                     Tapez au moins 2 caractères pour rechercher parmi {articles.length} articles
                   </div>
@@ -169,7 +183,7 @@ const ArticleAutocomplete = ({ value, onSelect, onValueChange, placeholder = "Re
                         <Check
                           className={cn(
                             "ml-auto h-4 w-4",
-                            value === article.designation ? "opacity-100" : "opacity-0"
+                            selectedArticle?.designation === article.designation ? "opacity-100" : "opacity-0"
                           )}
                         />
                       </CommandItem>

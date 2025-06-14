@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -73,6 +72,15 @@ const CreationBonModule = () => {
     if (ligne) {
       const montant = ligne.quantite * Number(article.prix);
       mettreAJourLigne(lineId, 'montant_ligne', montant);
+    }
+  };
+
+  const handleArticleValueChange = (value: string, lineId: string) => {
+    // Si l'utilisateur tape manuellement, mettre à jour seulement la désignation
+    if (value !== lignes.find(l => l.id === lineId)?.designation) {
+      mettreAJourLigne(lineId, 'designation', value);
+      // Réinitialiser l'article_id si l'utilisateur modifie manuellement
+      mettreAJourLigne(lineId, 'article_id', undefined);
     }
   };
 
@@ -272,7 +280,7 @@ const CreationBonModule = () => {
                         <ArticleAutocomplete
                           value={ligne.designation}
                           onSelect={(article) => handleArticleSelect(article, ligne.id)}
-                          onValueChange={(value) => mettreAJourLigne(ligne.id, 'designation', value)}
+                          onValueChange={(value) => handleArticleValueChange(value, ligne.id)}
                           placeholder="Rechercher un article..."
                         />
                       </TableCell>
