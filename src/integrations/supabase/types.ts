@@ -116,7 +116,6 @@ export type Database = {
           montant_total: number
           nom: string
           nombre_bl: number
-          statut: string
           updated_at: string
         }
         Insert: {
@@ -126,7 +125,6 @@ export type Database = {
           montant_total?: number
           nom: string
           nombre_bl?: number
-          statut?: string
           updated_at?: string
         }
         Update: {
@@ -136,7 +134,6 @@ export type Database = {
           montant_total?: number
           nom?: string
           nombre_bl?: number
-          statut?: string
           updated_at?: string
         }
         Relationships: []
@@ -227,12 +224,47 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      vue_detail_groupe_articles: {
+        Row: {
+          article_id: string | null
+          designation: string | null
+          groupe_id: string | null
+          montant_total_article: number | null
+          prix_unitaire_moyen: number | null
+          quantite_totale: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liaison_groupe_bl_groupe_id_fkey"
+            columns: ["groupe_id"]
+            isOneToOne: false
+            referencedRelation: "groupes_bl"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ligne_bon_entree_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "articles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       get_auth_user_id: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      get_groupe_details: {
+        Args: { groupe_id_param: string }
+        Returns: {
+          designation: string
+          article_id: string
+          quantite_totale: number
+          prix_unitaire_moyen: number
+          montant_total_article: number
+        }[]
       }
       search_articles: {
         Args: { search_term: string }

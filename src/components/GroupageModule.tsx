@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileText, Plus, Merge, Download, Calendar } from "lucide-react";
+import { FileText, Plus, Merge, Download, Calendar, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { BonEntree, GroupeBL } from "@/types/database";
+import GroupeDetailsModal from "./GroupeDetailsModal";
 
 const GroupageModule = () => {
   const [bons, setBons] = useState<BonEntree[]>([]);
@@ -16,6 +17,8 @@ const GroupageModule = () => {
   const [selectedBls, setSelectedBls] = useState<string[]>([]);
   const [nomGroupe, setNomGroupe] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selectedGroupe, setSelectedGroupe] = useState<GroupeBL | null>(null);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -137,6 +140,11 @@ const GroupageModule = () => {
         variant: "destructive"
       });
     }
+  };
+
+  const ouvrirDetailsGroupe = (groupe: GroupeBL) => {
+    setSelectedGroupe(groupe);
+    setDetailsModalOpen(true);
   };
 
   const getStatutColor = (statut: string) => {
@@ -274,10 +282,21 @@ const GroupageModule = () => {
                           Créé le {new Date(groupe.date_creation).toLocaleDateString('fr-FR')}
                         </CardDescription>
                       </div>
-                      <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-200">
-                        <Download className="w-4 h-4 mr-2" />
-                        Exporter
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="border-blue-300 text-blue-700 hover:bg-blue-200"
+                          onClick={() => ouvrirDetailsGroupe(groupe)}
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          Détails
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-200">
+                          <Download className="w-4 h-4 mr-2" />
+                          Exporter
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -298,6 +317,13 @@ const GroupageModule = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Modal des détails */}
+      <GroupeDetailsModal
+        groupe={selectedGroupe}
+        open={detailsModalOpen}
+        onOpenChange={setDetailsModalOpen}
+      />
     </div>
   );
 };
