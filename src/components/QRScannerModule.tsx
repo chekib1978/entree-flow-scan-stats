@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { QrCode, Camera, Plus, FileText, CheckCircle, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { BonEntree } from "@/types/database";
-import QrScanner from 'react-qr-scanner';
+import { BrowserMultiFormatReader } from '@zxing/library';
 
 const QRScannerModule = () => {
   const [blsScannés, setBLsScannés] = useState<BonEntree[]>([]);
@@ -17,11 +18,20 @@ const QRScannerModule = () => {
   const [loading, setLoading] = useState(true);
   const [scanError, setScanError] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const codeReader = useRef<BrowserMultiFormatReader | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchBLsScannés();
+    // Initialiser le lecteur de code
+    codeReader.current = new BrowserMultiFormatReader();
+    
+    return () => {
+      // Nettoyer lors du démontage
+      if (codeReader.current) {
+        codeReader.current.reset();
+      }
+    };
   }, []);
 
   const fetchBLsScannés = async () => {
@@ -46,20 +56,26 @@ const QRScannerModule = () => {
     setScanError("");
     
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment', // Caméra arrière préférée
-          width: { ideal: 640 },
-          height: { ideal: 480 }
-        } 
-      });
-      
-      streamRef.current = stream;
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
+      if (!codeReader.current || !videoRef.current) {
+        throw new Error("Scanner non initialisé");
       }
+
+      console.log('Démarrage du scanner QR...');
+      
+      // Démarrer la détection continue
+      await codeReader.current.decodeFromVideoDevice(
+        undefined, // deviceId automatique
+        videoRef.current,
+        (result, error) => {
+          if (result) {
+            console.log('QR Code détecté:', result.getText());
+            creerBLDepuisQR(result.getText());
+          }
+          if (error && !(error.name === 'NotFoundException')) {
+            console.error('Erreur de scan:', error);
+          }
+        }
+      );
       
       setScannerActif(true);
       
@@ -80,30 +96,13 @@ const QRScannerModule = () => {
   };
 
   const arreterScanner = () => {
+    console.log('Arrêt du scanner...');
     setScannerActif(false);
     setScanError("");
     
-    // Arrêter le flux vidéo
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    if (codeReader.current) {
+      codeReader.current.reset();
     }
-    
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  };
-
-  const handleScan = (data: string | null) => {
-    if (data && scannerActif) {
-      console.log('QR Code détecté:', data);
-      creerBLDepuisQR(data);
-    }
-  };
-
-  const handleError = (err: any) => {
-    console.error('Erreur scanner QR:', err);
-    setScanError("Erreur lors du scan du QR code");
   };
 
   const traiterDonnéesQR = (donnéesQR: string) => {
@@ -196,7 +195,6 @@ const QRScannerModule = () => {
       });
 
       // Arrêter le scanner
-      setScannerActif(false);
       arreterScanner();
 
     } catch (error) {
@@ -320,14 +318,16 @@ const QRScannerModule = () => {
                   <div className="text-center space-y-4">
                     {/* Aperçu de la caméra */}
                     <div className="relative w-64 h-48 mx-auto bg-black rounded-lg overflow-hidden">
-                      <QrScanner
-                        delay={300}
+                      <video
+                        ref={videoRef}
                         style={{
                           width: '100%',
                           height: '100%',
+                          objectFit: 'cover'
                         }}
-                        onError={handleError}
-                        onScan={handleScan}
+                        autoPlay
+                        muted
+                        playsInline
                       />
                       {/* Overlay pour le cadre de scan */}
                       <div className="absolute inset-0 flex items-center justify-center">
