@@ -16,17 +16,29 @@ Allez dans **Settings > Secrets and variables > Actions** de votre repository et
 2. **Source** : Sélectionnez **"GitHub Actions"** (pas "Deploy from a branch")
 3. Sauvegardez les paramètres
 
+**Note importante** : Si vous obtenez l'erreur "Get Pages site failed", cela signifie que GitHub Pages n'est pas encore activé pour votre repository. Vous devez d'abord activer GitHub Pages en suivant les étapes ci-dessus.
+
 ### 3. Permissions GitHub Actions
 Le workflow a été configuré avec les permissions nécessaires :
 - `contents: read` - pour lire le code
 - `pages: write` - pour déployer sur GitHub Pages  
 - `id-token: write` - pour l'authentification
 
-## Résolution de l'erreur 403
+## Résolution des erreurs communes
 
-L'erreur que vous avez rencontrée était due à :
+### Erreur 403 (Permissions insuffisantes)
+L'erreur était due à :
 1. Permissions insuffisantes dans le workflow
-2. Configuration GitHub Pages incorrecte (utilisation de la branche gh-pages au lieu de GitHub Actions)
+2. Configuration GitHub Pages incorrecte
+
+### Erreur "Get Pages site failed"
+Cette erreur signifie que GitHub Pages n'est pas activé. Pour la résoudre :
+1. Allez dans **Settings > Pages** de votre repository
+2. Activez GitHub Pages en sélectionnant "GitHub Actions" comme source
+3. Si l'option n'est pas disponible, votre repository doit être public ou vous devez avoir un plan GitHub Pro/Team
+
+### Repository privé
+Si votre repository est privé, vous avez besoin d'un plan GitHub Pro ou supérieur pour utiliser GitHub Pages.
 
 ## Options de déploiement
 
@@ -47,10 +59,15 @@ L'erreur que vous avez rencontrée était due à :
 
 ## Étapes suivantes
 
-1. **Activez GitHub Pages** avec la source "GitHub Actions"
+1. **Activez GitHub Pages** avec la source "GitHub Actions" dans Settings > Pages
 2. **Ajoutez vos secrets** Supabase dans les paramètres du repository
 3. **Poussez ces modifications** vers la branche main
 4. Le déploiement se lancera automatiquement
+
+Si vous continuez à avoir des erreurs, vérifiez que :
+- Votre repository est public OU vous avez un plan GitHub Pro/Team
+- GitHub Pages est bien activé dans les paramètres
+- La source est configurée sur "GitHub Actions"
 
 ## Structure des fichiers de production
 
