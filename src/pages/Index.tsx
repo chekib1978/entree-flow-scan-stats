@@ -27,17 +27,21 @@ const Index = () => {
     { value: "statistics", label: "Statistiques", icon: BarChart3 },
   ];
 
-  const TabButton = ({ item, isActive }: { item: typeof tabItems[0], isActive: boolean }) => (
+  const MobileTabButton = ({ item, isActive, onClick }: { 
+    item: typeof tabItems[0], 
+    isActive: boolean,
+    onClick: () => void
+  }) => (
     <button
-      onClick={() => setActiveTab(item.value)}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full text-left ${
+      onClick={onClick}
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors w-full text-left ${
         isActive 
           ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-          : 'text-gray-600 hover:bg-gray-100'
+          : 'text-gray-700 hover:bg-gray-50'
       }`}
     >
-      <item.icon className="w-4 h-4" />
-      <span className="truncate">{item.label}</span>
+      <item.icon className="w-5 h-5" />
+      <span>{item.label}</span>
     </button>
   );
 
@@ -55,23 +59,32 @@ const Index = () => {
         </div>
 
         {/* Mobile Navigation */}
-        <div className="lg:hidden mb-4">
+        <div className="lg:hidden mb-6">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="outline" className="w-full justify-start">
-                <Menu className="w-4 h-4 mr-2" />
-                Navigation - {tabItems.find(item => item.value === activeTab)?.label}
+              <Button variant="outline" className="w-full justify-between bg-white shadow-sm border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Menu className="w-4 h-4" />
+                  <span className="font-medium">Navigation</span>
+                </div>
+                <span className="text-sm text-gray-500">
+                  {tabItems.find(item => item.value === activeTab)?.label}
+                </span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[300px] sm:w-[400px]">
-              <div className="py-4">
-                <h2 className="text-lg font-semibold mb-4">Navigation</h2>
-                <div className="space-y-2">
+            <SheetContent side="left" className="w-[320px] p-0">
+              <div className="flex flex-col h-full bg-white">
+                <div className="p-6 border-b border-gray-100">
+                  <h2 className="text-lg font-semibold text-gray-900">Menu Principal</h2>
+                  <p className="text-sm text-gray-500 mt-1">Sélectionnez une section</p>
+                </div>
+                <div className="flex-1 p-4 space-y-2">
                   {tabItems.map((item) => (
-                    <TabButton 
+                    <MobileTabButton 
                       key={item.value} 
                       item={item} 
                       isActive={activeTab === item.value}
+                      onClick={() => setActiveTab(item.value)}
                     />
                   ))}
                 </div>
@@ -90,17 +103,6 @@ const Index = () => {
               </TabsTrigger>
             ))}
           </TabsList>
-
-          {/* Tablet Navigation */}
-          <div className="hidden md:grid lg:hidden grid-cols-2 gap-2 mb-6">
-            {tabItems.map((item) => (
-              <TabButton 
-                key={item.value} 
-                item={item} 
-                isActive={activeTab === item.value}
-              />
-            ))}
-          </div>
 
           {/* Content */}
           <div className="w-full overflow-x-auto">
