@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,6 @@ const ArticlesModule = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
-  const [deletingAll, setDeletingAll] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -165,32 +165,6 @@ const ArticlesModule = () => {
     }
   };
 
-  const deleteAllArticles = async () => {
-    setDeletingAll(true);
-    try {
-      // Utilisation de la fonction RPC 'truncate_articles'
-      const { error } = await supabase.rpc('truncate_articles');
-
-      if (error) throw error;
-
-      setArticles([]); // Vide la liste des articles localement
-      toast({
-        title: "Suppression Réussie",
-        description: "Tous les articles ont été supprimés avec succès.",
-        variant: "success",
-      });
-    } catch (error) {
-      console.error('Erreur lors de la suppression de tous les articles:', error);
-      toast({
-        title: "Erreur de Suppression",
-        description: (error as Error).message || "Impossible de supprimer tous les articles.",
-        variant: "destructive"
-      });
-    } finally {
-      setDeletingAll(false);
-    }
-  };
-
   const filteredArticles = articles.filter(article =>
     article.designation.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (article.code_article && article.code_article.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -243,36 +217,6 @@ const ArticlesModule = () => {
               <Plus className="w-4 h-4 mr-2" />
               Nouvel Article (Manuel)
             </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  className="border-red-200 hover:bg-red-50 text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={articles.length === 0 || deletingAll}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {deletingAll ? 'Suppression...' : 'Supprimer Tout'}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Confirmer la suppression totale</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Êtes-vous sûr de vouloir supprimer tous les articles ({articles.length}) ? Cette action est irréversible.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Annuler</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={deleteAllArticles}
-                    disabled={deletingAll}
-                    className="bg-red-600 hover:bg-red-700"
-                  >
-                    {deletingAll ? 'Suppression en cours...' : 'Confirmer la Suppression'}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
             <div className="flex-1 min-w-[200px] sm:min-w-[300px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
