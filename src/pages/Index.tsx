@@ -99,7 +99,7 @@ const Index = () => {
             {tabItems.map((item) => (
               <TabsTrigger key={item.value} value={item.value} className="flex items-center gap-2">
                 <item.icon className="w-4 h-4" />
-                <span className="hidden xl:inline">{item.label}</span>
+                <span>{item.label}</span>
               </TabsTrigger>
             ))}
           </TabsList>
